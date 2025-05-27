@@ -28,6 +28,8 @@ class _MyAppState extends State<MyApp> {
 
   static final List<Widget> _pages = <Widget>[
     const BudgetHomePage(title: 'Hello Kitty Budget Calculator'),
+    // Add a placeholder for a second page
+    const Center(child: Text('Second Page Placeholder')),
   ];
 
   void _onItemTapped(int index) {
@@ -51,6 +53,10 @@ class _MyAppState extends State<MyApp> {
             BottomNavigationBarItem(
               icon: Icon(Icons.calculate),
               label: 'Budget',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings), // Example icon
+              label: 'Settings', // Example label
             ),
           ],
           currentIndex: _selectedIndex,
