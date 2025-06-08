@@ -33,6 +33,17 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   late String _selectedCurrency;
   double? _monthlyBudgetLimit;
+  String _searchQuery = '';
+  List<String> _selectedFilterCategories = [];
+  String _filterTransactionType = 'All'; // 'All', 'Expense', 'Subscription'
+
+  // Get unique categories from expenses for filter options
+  List<String> get _availableCategories {
+    final categories =
+        _expenseBox.values.map((e) => e.category ?? 'N/A').toSet().toList();
+    categories.sort();
+    return categories;
+  }
 
   final Map<String, String> currencySymbols = {
     'Dollars': '\$',
@@ -53,8 +64,44 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   void _loadData() {
     setState(() {
-      _expenses = _expenseBox.values.toList();
-      _subscriptions = _subscriptionBox.values.toList();
+      Iterable<models.ExpenseEntry> filteredExpenses = _expenseBox.values;
+      Iterable<models.SubscriptionEntry> filteredSubscriptions =
+          _subscriptionBox.values;
+
+      // Apply search query
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery.toLowerCase();
+        filteredExpenses = filteredExpenses.where((expense) {
+          return expense.amount.toString().toLowerCase().contains(query) ||
+              (expense.category?.toLowerCase().contains(query) ?? false);
+        });
+        filteredSubscriptions = filteredSubscriptions.where((sub) {
+          return sub.name.toLowerCase().contains(query) ||
+              sub.amount.toString().toLowerCase().contains(query);
+        });
+      }
+
+      // Apply category filter (only for expenses)
+      if (_selectedFilterCategories.isNotEmpty) {
+        filteredExpenses = filteredExpenses.where(
+          (expense) =>
+              _selectedFilterCategories.contains(expense.category ?? 'N/A'),
+        );
+      }
+
+      // Apply transaction type filter
+      if (_filterTransactionType == 'Expense') {
+        _expenses = filteredExpenses.toList();
+        _subscriptions =
+            []; // Show no subscriptions if filtering for expenses only
+      } else if (_filterTransactionType == 'Subscription') {
+        _expenses = []; // Show no expenses
+        _subscriptions = filteredSubscriptions.toList();
+      } else {
+        // 'All'
+        _expenses = filteredExpenses.toList();
+        _subscriptions = filteredSubscriptions.toList();
+      }
     });
   }
 
@@ -204,6 +251,112 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     });
   }
 
+  Future<void> _showFilterDialog() async {
+    List<String> tempSelectedCategories = List.from(_selectedFilterCategories);
+    String tempTransactionType = _filterTransactionType;
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          // Use StatefulBuilder for dialog's own state
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Filter Transactions'),
+              content: SingleChildScrollView(
+                child: ListBody(
+                  children: <Widget>[
+                    const Text(
+                      'Transaction Type:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('All'),
+                      value: 'All',
+                      groupValue: tempTransactionType,
+                      onChanged:
+                          (value) => setDialogState(
+                            () => tempTransactionType = value!,
+                          ),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Expenses'),
+                      value: 'Expense',
+                      groupValue: tempTransactionType,
+                      onChanged:
+                          (value) => setDialogState(
+                            () => tempTransactionType = value!,
+                          ),
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Subscriptions'),
+                      value: 'Subscription',
+                      groupValue: tempTransactionType,
+                      onChanged:
+                          (value) => setDialogState(
+                            () => tempTransactionType = value!,
+                          ),
+                    ),
+                    const Divider(),
+                    const Text(
+                      'Categories (Expenses):',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    if (_availableCategories.isEmpty)
+                      const Text('No categories available to filter.'),
+                    ..._availableCategories.map((category) {
+                      return CheckboxListTile(
+                        title: Text(category),
+                        value: tempSelectedCategories.contains(category),
+                        onChanged: (bool? selected) {
+                          setDialogState(() {
+                            if (selected == true) {
+                              tempSelectedCategories.add(category);
+                            } else {
+                              tempSelectedCategories.remove(category);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Clear Filters'),
+                  onPressed: () {
+                    setState(() {
+                      _selectedFilterCategories = [];
+                      _filterTransactionType = 'All';
+                      _loadData();
+                    });
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+                ElevatedButton(
+                  child: const Text('Apply'),
+                  onPressed: () {
+                    setState(() {
+                      _selectedFilterCategories = tempSelectedCategories;
+                      _filterTransactionType = tempTransactionType;
+                      _loadData();
+                    });
+                    Navigator.of(dialogContext).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   double get totalBudget {
     double totalExpenses = _expenses.fold(0, (sum, item) => sum + item.amount);
     double totalSubscriptions = _subscriptions.fold(
@@ -250,6 +403,39 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     ),
                     const SizedBox(height: 12),
                     Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            decoration: InputDecoration(
+                              labelText: 'Search Transactions...',
+                              hintText: 'Name, category, amount',
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(
+                                context,
+                              ).cardColor.withOpacity(0.8),
+                            ),
+                            onChanged: (value) {
+                              _searchQuery = value;
+                              _loadData(); // Re-filter and update lists
+                            },
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.filter_list,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          tooltip: 'Filter Transactions',
+                          onPressed: _showFilterDialog,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         CurrencySelector(
@@ -284,26 +470,45 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    ExpenseInput(onAddExpense: _addExpense),
-                    const SizedBox(height: 12),
-                    SubscriptionInput(onAddSubscription: _addSubscription),
-                    const SizedBox(height: 20),
-                    ExpenseList(
-                      expenses: _expenses,
-                      currency: _selectedCurrency,
-                      onDelete: _deleteExpense,
-                      onEdit: _editExpense,
+                    Card(
+                      elevation: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: ExpenseInput(onAddExpense: _addExpense),
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    SubscriptionList(
-                      subscriptions: _subscriptions,
-                      currency: _selectedCurrency,
-                      onDelete: _deleteSubscription,
-                      onEdit: _editSubscription,
+                    Card(
+                      elevation: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: SubscriptionInput(
+                          onAddSubscription: _addSubscription,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 20),
+                    Card(
+                      elevation: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: ExpenseList(
+                          expenses: _expenses,
+                          currency: _selectedCurrency,
+                          onDelete: _deleteExpense,
+                          onEdit: _editExpense,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
+                      margin: const EdgeInsets.symmetric(
+                        vertical: 12.0,
+                      ), // Added margin
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,

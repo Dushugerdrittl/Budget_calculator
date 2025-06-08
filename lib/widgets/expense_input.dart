@@ -48,50 +48,53 @@ class _ExpenseInputState extends State<ExpenseInput> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width:
-                  MediaQuery.of(context).size.width *
-                  0.55, // Adjust width as needed
-              child: TextField(
-                controller: _controller,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Expense Amount',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.money_off),
+        Expanded(
+          // Wrap the Column with Expanded
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                // width:
+                //     MediaQuery.of(context).size.width *
+                //     0.55, // No longer need fixed width here
+                child: TextField(
+                  controller: _controller,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Expense Amount',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.money_off),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: MediaQuery.of(context).size.width * 0.55,
-              child: DropdownButtonFormField<String>(
-                value: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.category),
+              const SizedBox(height: 8),
+              SizedBox(
+                // width: MediaQuery.of(context).size.width * 0.55, // No longer need fixed width
+                child: DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: const InputDecoration(
+                    labelText: 'Category',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.category),
+                  ),
+                  items:
+                      _categories.map((String category) {
+                        return DropdownMenuItem<String>(
+                          value: category,
+                          child: Text(category),
+                        );
+                      }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedCategory = newValue;
+                    });
+                  },
                 ),
-                items:
-                    _categories.map((String category) {
-                      return DropdownMenuItem<String>(
-                        value: category,
-                        child: Text(category),
-                      );
-                    }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedCategory = newValue;
-                  });
-                },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(width: 10),
         ElevatedButton(
