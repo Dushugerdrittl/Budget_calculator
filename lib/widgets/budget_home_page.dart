@@ -318,7 +318,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                           });
                         },
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),
