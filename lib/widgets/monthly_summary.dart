@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/entries.dart' as models;
+import 'package:fl_chart/fl_chart.dart';
 
 class MonthlySummary extends StatelessWidget {
   final List<models.ExpenseEntry> expenses;
@@ -28,6 +29,44 @@ class MonthlySummary extends StatelessWidget {
           (categoryTotals[category] ?? 0) + expense.amount;
     }
     return categoryTotals;
+  }
+
+  List<PieChartSectionData> _generatePieChartSections(
+    Map<String, double> categoryTotals,
+    BuildContext context,
+  ) {
+    final List<Color> colors = [
+      Colors.blue.shade300,
+      Colors.red.shade300,
+      Colors.green.shade300,
+      Colors.orange.shade300,
+      Colors.purple.shade300,
+      Colors.yellow.shade700,
+      Colors.teal.shade300,
+      Colors.pink.shade300,
+    ];
+    int colorIndex = 0;
+
+    return categoryTotals.entries.map((entry) {
+      final color = colors[colorIndex % colors.length];
+      colorIndex++;
+      return PieChartSectionData(
+        color: color,
+        value: entry.value,
+        title:
+            '${entry.key}\n$currency${entry.value.toStringAsFixed(0)}', // Simplified title
+        radius: 50, // Adjust radius as needed
+        titleStyle: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color:
+              Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black54,
+        ),
+        titlePositionPercentageOffset: 0.6, // Adjust label position
+      );
+    }).toList();
   }
 
   @override
@@ -88,6 +127,27 @@ class MonthlySummary extends StatelessWidget {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
             const SizedBox(height: 4),
+            if (categoryTotals.isNotEmpty)
+              SizedBox(
+                height: 150, // Adjust height as needed
+                child: PieChart(
+                  PieChartData(
+                    sections: _generatePieChartSections(
+                      categoryTotals,
+                      context,
+                    ),
+                    centerSpaceRadius: 30, // Adjust center space
+                    sectionsSpace: 2, // Space between sections
+                    pieTouchData: PieTouchData(
+                      touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                        // Optional: Handle touch events on chart sections
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12), // Spacer after chart
+            // Text list of categories (optional, can be removed if chart is sufficient)
             ...categoryTotals.entries.map((entry) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2.0),
