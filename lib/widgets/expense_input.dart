@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class ExpenseInput extends StatefulWidget {
-  final ValueChanged<double> onAddExpense;
+  final Function(double amount, String category) onAddExpense;
 
   const ExpenseInput({super.key, required this.onAddExpense});
 
@@ -11,12 +11,30 @@ class ExpenseInput extends StatefulWidget {
 
 class _ExpenseInputState extends State<ExpenseInput> {
   final TextEditingController _controller = TextEditingController();
+  String? _selectedCategory = 'General'; // Default category
+
+  final List<String> _categories = [
+    'General',
+    'Food',
+    'Transport',
+    'Shopping',
+    'Utilities',
+    'Entertainment',
+    'Health',
+    'Education',
+    'Other',
+  ];
 
   void _handleAdd() {
     final value = double.tryParse(_controller.text);
+    final category = _selectedCategory ?? 'General';
+
     if (value != null && value > 0) {
-      widget.onAddExpense(value);
+      widget.onAddExpense(value, category);
       _controller.clear();
+      setState(() {
+        _selectedCategory = 'General'; // Reset to default
+      });
     }
   }
 
@@ -30,22 +48,56 @@ class _ExpenseInputState extends State<ExpenseInput> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          child: TextField(
-            controller: _controller,
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Add Expense',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.money_off),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width:
+                  MediaQuery.of(context).size.width *
+                  0.55, // Adjust width as needed
+              child: TextField(
+                controller: _controller,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Expense Amount',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.money_off),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: MediaQuery.of(context).size.width * 0.55,
+              child: DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.category),
+                ),
+                items:
+                    _categories.map((String category) {
+                      return DropdownMenuItem<String>(
+                        value: category,
+                        child: Text(category),
+                      );
+                    }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedCategory = newValue;
+                  });
+                },
+              ),
+            ),
+          ],
         ),
         const SizedBox(width: 10),
         ElevatedButton(
           onPressed: _handleAdd,
           style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent),
-          child: const Text('Add'),
+          child: const Text('Add\nExpense', textAlign: TextAlign.center),
         ),
       ],
     );

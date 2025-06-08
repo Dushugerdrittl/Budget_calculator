@@ -10,7 +10,14 @@ class ExpenseEntry extends HiveObject {
   @HiveField(1)
   DateTime date;
 
-  ExpenseEntry({required this.amount, required this.date});
+  @HiveField(2) // New field for category
+  String? category; // Make category nullable
+
+  ExpenseEntry({
+    required this.amount,
+    required this.date,
+    this.category = 'General', // Default category still applies for new entries
+  });
 }
 
 @HiveType(typeId: 1)

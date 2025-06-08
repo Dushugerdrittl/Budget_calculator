@@ -11,9 +11,14 @@ import 'budget_graph.dart';
 import 'yearly_summary.dart';
 
 class BudgetHomePage extends StatefulWidget {
-  const BudgetHomePage({super.key, required this.title});
+  const BudgetHomePage({
+    super.key,
+    required this.title,
+    this.initialCurrencySymbol = '\$', // Default if not provided
+  });
 
   final String title;
+  final String initialCurrencySymbol;
 
   @override
   State<BudgetHomePage> createState() => _BudgetHomePageState();
@@ -26,7 +31,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   List<models.ExpenseEntry> _expenses = [];
   List<models.SubscriptionEntry> _subscriptions = [];
 
-  String _selectedCurrency = '\$'; // Default to dollars
+  late String _selectedCurrency;
   double? _monthlyBudgetLimit;
 
   final Map<String, String> currencySymbols = {
@@ -39,7 +44,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   @override
   void initState() {
     super.initState();
+    // Call super.initState() first
     _expenseBox = Hive.box<models.ExpenseEntry>('expenses');
+    _selectedCurrency = widget.initialCurrencySymbol;
     _subscriptionBox = Hive.box<models.SubscriptionEntry>('subscriptions');
     _loadData();
   }
@@ -51,8 +58,12 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     });
   }
 
-  void _addExpense(double value) {
-    final entry = models.ExpenseEntry(amount: value, date: DateTime.now());
+  void _addExpense(double value, String category) {
+    final entry = models.ExpenseEntry(
+      amount: value,
+      date: DateTime.now(),
+      category: category,
+    );
     _expenseBox.add(entry);
     _loadData();
   }
@@ -258,9 +269,16 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                           ),
-                          child: const Text(
-                            'Set Monthly Budget',
-                            style: TextStyle(fontSize: 16),
+                          child: FittedBox(
+                            // Allow text to scale down
+                            fit: BoxFit.scaleDown,
+                            child: const Text(
+                              'Set Budget', // Use the shorter text
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                              ), // Ensure text color is set
+                            ),
                           ),
                         ),
                       ],
@@ -286,7 +304,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 20),
                     Container(
                       width: double.infinity,
-                      height: 60,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
@@ -294,21 +311,38 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       decoration: BoxDecoration(
                         color:
                             isOverBudget
-                                ? Colors.redAccent
+                                ? Colors.redAccent.withOpacity(0.8)
                                 : Colors.pinkAccent.withOpacity(0.7),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
-                        child: Text(
-                          _monthlyBudgetLimit == null
-                              ? 'Total Monthly Budget: $_selectedCurrency${totalBudget.toStringAsFixed(2)}'
-                              : 'Total Monthly Budget: $_selectedCurrency${totalBudget.toStringAsFixed(2)} / Budget Limit: $_selectedCurrency${_monthlyBudgetLimit!.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                          textAlign: TextAlign.center,
+                        child: Column(
+                          mainAxisSize:
+                              MainAxisSize
+                                  .min, // So column doesn't take full height
+                          children: [
+                            Text(
+                              'Total Spending: $_selectedCurrency${totalBudget.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (_monthlyBudgetLimit != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  'Budget Limit: $_selectedCurrency${_monthlyBudgetLimit!.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -321,7 +355,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 20),
                     MonthlySummary(
                       expenses: _expenses,
-                      subscriptions: _subscriptions,
+                      // subscriptions: _subscriptions, // Removed as MonthlySummary no longer accepts it
                       currency: _selectedCurrency,
                     ),
                     const SizedBox(height: 20),

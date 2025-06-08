@@ -81,13 +81,19 @@ class BudgetGraph extends StatelessWidget {
                     color: Colors.pinkAccent,
                   ),
                 ),
-                Text(
-                  budgetLimit == null
-                      ? 'No Budget Limit Set'
-                      : 'Budget Limit: $currency${budgetLimit!.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isOverBudget ? Colors.redAccent : Colors.pink,
+                Flexible(
+                  // Allow this widget to shrink and prevent overflow
+                  child: Text(
+                    budgetLimit == null
+                        ? 'No Budget Limit Set'
+                        : 'Budget Limit: $currency${budgetLimit!.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isOverBudget ? Colors.redAccent : Colors.pink,
+                    ),
+                    textAlign: TextAlign.end, // Align text to the right
+                    overflow:
+                        TextOverflow.ellipsis, // Handle potential overflow
                   ),
                 ),
               ],

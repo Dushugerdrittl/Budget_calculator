@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/entries.dart' as models;
+import '../models/entries.dart' as models; // Added missing import
 
 class ExpenseList extends StatelessWidget {
   final List<models.ExpenseEntry> expenses;
@@ -32,41 +32,46 @@ class ExpenseList extends StatelessWidget {
         ),
         ...expenses.asMap().entries.map((entry) {
           int idx = entry.key;
-          models.ExpenseEntry e = entry.value;
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.pink.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.pink.shade200),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  formatter.format(e.date),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.pink,
+          models.ExpenseEntry e = entry.value; // Assuming models is imported
+          return Card(
+            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            elevation: 2,
+            child: ListTile(
+              leading: const Icon(
+                Icons.receipt_long,
+                color: Colors.pinkAccent,
+                size: 30,
+              ),
+              title: Text(
+                '$currency${e.amount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Date: ${formatter.format(e.date)}'),
+                  Text(
+                    'Category: ${e.category ?? 'N/A'}', // Handle null category
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
                   ),
-                ),
-                Text(
-                  '$currency${e.amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.pinkAccent,
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blueAccent),
+                    onPressed: () => onEdit(idx),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.pink),
-                  onPressed: () => onEdit(idx),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.redAccent),
-                  onPressed: () => onDelete(idx),
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                    onPressed: () => onDelete(idx),
+                  ),
+                ],
+              ),
             ),
           );
         }),
@@ -74,3 +79,6 @@ class ExpenseList extends StatelessWidget {
     );
   }
 }
+
+// Make sure you have this import if it's not already there from other changes:
+// import '../models/entries.dart' as models;
