@@ -15,6 +15,10 @@ import 'package:file_picker/file_picker.dart';
 import 'web_export_helper.dart'
     if (dart.library.html) 'web_export_helper.dart'
     if (dart.library.io) 'mobile_export_helper.dart';
+import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'firebase_options.dart'; // Import the generated Firebase options
+import 'login_screen.dart'; // Import the LoginScreen
 
 const String _themeModePrefsKey =
     'themeModeIndex'; // Use a constant for the key
@@ -22,32 +26,124 @@ const String _defaultCurrencyKey = 'defaultCurrencySymbol';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Hive.initFlutter();
+  // Initialize Firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  await Hive.initFlutter();
   Hive.registerAdapter(models.ExpenseEntryAdapter());
   Hive.registerAdapter(models.SubscriptionEntryAdapter());
 
-  await Hive.openBox<models.ExpenseEntry>('expenses');
-  await Hive.openBox<models.SubscriptionEntry>('subscriptions');
+  // We will open user-specific boxes after login, so remove global box opening here.
+  // await Hive.openBox<models.ExpenseEntry>('expenses');
+  // await Hive.openBox<models.SubscriptionEntry>('subscriptions');
 
   // Load the saved theme mode before running the app
   SharedPreferences prefs = await SharedPreferences.getInstance();
   int? themeModeIndex = prefs.getInt(_themeModePrefsKey);
   String? defaultCurrency = prefs.getString(_defaultCurrencyKey);
   runApp(
-    MyApp(
+    AppRoot(
+      // Changed MyApp to AppRoot to contain the AuthWrapper
       savedThemeModeIndex: themeModeIndex,
       savedDefaultCurrency: defaultCurrency,
     ),
   );
 }
 
-class MyApp extends StatefulWidget {
-  // Add a constructor to accept the saved theme mode
+class AppRoot extends StatefulWidget {
   final int? savedThemeModeIndex;
   final String? savedDefaultCurrency;
 
-  const MyApp({super.key, this.savedThemeModeIndex, this.savedDefaultCurrency});
+  const AppRoot({
+    super.key,
+    this.savedThemeModeIndex,
+    this.savedDefaultCurrency,
+  });
+
+  @override
+  State<AppRoot> createState() => _AppRootState();
+}
+
+class _AppRootState extends State<AppRoot> {
+  late ThemeMode _currentThemeMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentThemeMode =
+        ThemeMode.values[widget.savedThemeModeIndex ?? ThemeMode.system.index];
+  }
+
+  Future<void> _handleThemeChanged(ThemeMode themeMode) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_themeModePrefsKey, themeMode.index);
+    setState(() {
+      _currentThemeMode = themeMode;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // AppRoot now returns the single top-level MaterialApp
+    return MaterialApp(
+      title: 'Hello Kitty Budget App', // You can keep a consistent title
+      themeMode: _currentThemeMode, // Use state variable for themeMode
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.pinkAccent,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.pinkAccent,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          print(
+            "[AppRoot] Auth StreamBuilder rebuilt. ConnectionState: ${snapshot.connectionState}, HasData: ${snapshot.hasData}, HasError: ${snapshot.hasError}, Error: ${snapshot.error}, User: ${snapshot.data}",
+          );
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ); // Content for the MaterialApp's home
+          }
+          if (snapshot.hasData) {
+            // User is logged in, show the main app content
+            return MyApp(
+              // Pass the current user to MyApp
+              currentUser: snapshot.data!, // snapshot.data is the User object
+              currentThemeMode: _currentThemeMode, // Pass current theme
+              onThemeChanged: _handleThemeChanged, // Pass theme change handler
+              savedDefaultCurrency: widget.savedDefaultCurrency,
+            );
+          }
+          // User is not logged in, show the LoginScreen
+          return const LoginScreen(); // LoginScreen is already a Scaffold
+        },
+      ),
+    );
+  }
+}
+
+class MyApp extends StatefulWidget {
+  final String? savedDefaultCurrency;
+  final User currentUser; // Add a field for the current user
+  final ThemeMode currentThemeMode; // Receive current theme
+  final ValueChanged<ThemeMode> onThemeChanged; // Receive theme change handler
+
+  const MyApp({
+    super.key,
+    required this.currentUser, // Make currentUser required
+    required this.currentThemeMode,
+    required this.onThemeChanged,
+    this.savedDefaultCurrency,
+  });
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -55,51 +151,52 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   int _selectedIndex = 0;
-  late ThemeMode _themeMode;
-  bool _isLoadingTheme = true; // Add a loading state
+  // bool _isLoadingTheme = true; // Theme loading is now handled by AppRoot
   Key _budgetHomePageKey = UniqueKey(); // Key to refresh BudgetHomePage
   // Initialize with a sensible default to avoid LateInitializationError,
   // it will be updated by _loadInitialSettings.
   String _currentDefaultCurrency = '\$';
+  // We will open user-specific boxes later in initState
+
+  bool _hiveBoxesOpened = false; // To track if boxes are opened
 
   @override
   void initState() {
     super.initState();
-    _loadInitialSettings();
+    print("[MyApp] initState called for user: ${widget.currentUser.uid}");
+    _initializeAsyncData();
   }
 
   void _loadInitialSettings() {
-    // Load Theme
-    ThemeMode initialThemeMode = ThemeMode.system; // Default
-    if (widget.savedThemeModeIndex != null) {
-      // Ensure the index is valid
-      if (widget.savedThemeModeIndex! >= 0 &&
-          widget.savedThemeModeIndex! < ThemeMode.values.length) {
-        initialThemeMode = ThemeMode.values[widget.savedThemeModeIndex!];
-      }
-    }
-    _themeMode = initialThemeMode;
-
     // Load Default Currency
     // _currentDefaultCurrency already has a default.
     // Update it with the saved value if available, otherwise keep the default.
     _currentDefaultCurrency =
         widget.savedDefaultCurrency ?? _currentDefaultCurrency;
 
-    // All settings loaded, update UI to remove loading indicator
+    // Theme is now managed by AppRoot, so no need to set _isLoadingTheme here
+    // related to theme. We still need to wait for Hive boxes.
+  }
+
+  Future<void> _initializeAsyncData() async {
+    _loadInitialSettings(); // Load theme and currency first
+    await _openUserSpecificHiveBoxes(); // Then open Hive boxes
     if (mounted) {
       setState(() {
-        _isLoadingTheme = false; // Set loading to false once theme is loaded
+        _hiveBoxesOpened = true; // Mark boxes as opened
       });
     }
   }
 
-  Future<void> _changeTheme(ThemeMode themeMode) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_themeModePrefsKey, themeMode.index);
-    setState(() {
-      _themeMode = themeMode;
-    });
+  Future<void> _openUserSpecificHiveBoxes() async {
+    final userId = widget.currentUser.uid;
+    print("[MyApp] Opening Hive boxes for user: $userId");
+    await Hive.openBox<models.ExpenseEntry>('expenses_$userId');
+    await Hive.openBox<models.SubscriptionEntry>('subscriptions_$userId');
+    print("[MyApp] Hive boxes opened for user: $userId");
+    // Trigger a rebuild of BudgetHomePage if necessary, e.g., by updating its key
+    // or ensuring BudgetHomePage re-reads from the new boxes.
+    _budgetHomePageKey = UniqueKey();
   }
 
   Future<void> _setDefaultCurrency(String currencySymbol) async {
@@ -137,8 +234,10 @@ class _MyAppState extends State<MyApp> {
     );
 
     if (confirmed == true) {
-      await Hive.box<models.ExpenseEntry>('expenses').clear();
-      await Hive.box<models.SubscriptionEntry>('subscriptions').clear();
+      final userId = widget.currentUser.uid;
+      await Hive.box<models.ExpenseEntry>('expenses_$userId').clear();
+      await Hive.box<models.SubscriptionEntry>('subscriptions_$userId').clear();
+      _budgetHomePageKey = UniqueKey(); // Refresh UI
       // Optionally, show a SnackBar or navigate away
       if (mounted && contextForDialog.mounted) {
         ScaffoldMessenger.of(
@@ -146,6 +245,10 @@ class _MyAppState extends State<MyApp> {
         ).showSnackBar(const SnackBar(content: Text('All data cleared.')));
         // If BudgetHomePage needs an explicit refresh, you'd handle it here
         // For now, data will be empty next time BudgetHomePage loads its data.
+        setState(() {
+          // Ensure UI rebuilds to reflect cleared data
+          _budgetHomePageKey = UniqueKey();
+        });
       }
     }
   }
@@ -153,16 +256,20 @@ class _MyAppState extends State<MyApp> {
   Future<void> _handleExportData(BuildContext contextForSnackbar) async {
     List<models.ExpenseEntry> expenses =
         Hive.box<models.ExpenseEntry>('expenses').values.toList();
+    final userId = widget.currentUser.uid;
+    List<models.ExpenseEntry> userExpenses =
+        Hive.box<models.ExpenseEntry>('expenses_$userId').values.toList();
     List<models.SubscriptionEntry> subscriptions =
-        Hive.box<models.SubscriptionEntry>('subscriptions').values.toList();
-
+        Hive.box<models.SubscriptionEntry>(
+          'subscriptions_$userId',
+        ).values.toList();
     List<List<dynamic>> rows = [];
 
     // Add headers
     rows.add(['Type', 'Name/Description', 'Amount', 'Date']);
 
     // Add expense data
-    for (var expense in expenses) {
+    for (var expense in userExpenses) {
       rows.add([
         'Expense',
         'Expense',
@@ -238,6 +345,7 @@ class _MyAppState extends State<MyApp> {
         List<List<dynamic>> csvTable = const CsvToListConverter().convert(
           csvString,
         );
+        final userId = widget.currentUser.uid;
 
         int importedExpenses = 0;
         int importedSubscriptions = 0;
@@ -256,11 +364,11 @@ class _MyAppState extends State<MyApp> {
 
           if (type.toLowerCase() == 'expense') {
             Hive.box<models.ExpenseEntry>(
-              'expenses',
+              'expenses_$userId',
             ).add(models.ExpenseEntry(amount: amount, date: date));
             importedExpenses++;
           } else if (type.toLowerCase() == 'subscription') {
-            Hive.box<models.SubscriptionEntry>('subscriptions').add(
+            Hive.box<models.SubscriptionEntry>('subscriptions_$userId').add(
               models.SubscriptionEntry(
                 name: nameOrDesc,
                 amount: amount,
@@ -307,11 +415,12 @@ class _MyAppState extends State<MyApp> {
       BudgetHomePage(
         key: _budgetHomePageKey, // Assign the key here
         initialCurrencySymbol: _currentDefaultCurrency,
+        userId: widget.currentUser.uid, // Pass userId to BudgetHomePage
         title: 'Hello Kitty Budget Calculator',
       ),
       SettingsPage(
-        themeMode: _themeMode,
-        onThemeChanged: _changeTheme,
+        themeMode: widget.currentThemeMode, // Pass theme from AppRoot
+        onThemeChanged: widget.onThemeChanged, // Pass callback from AppRoot
         onClearAllData: _handleClearAllData, // Pass the method reference
         onExportData:
             () => _handleExportData(
@@ -333,47 +442,32 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingTheme) {
+    if (!_hiveBoxesOpened) {
+      // Only wait for Hive boxes now
       // Show a loading indicator while the theme is being loaded
-      return const MaterialApp(
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      return const Scaffold(
+        // Consistently return a Scaffold
+        body: Center(
+          child: CircularProgressIndicator(),
+        ), // Indicator as the body
       );
     }
 
-    return MaterialApp(
-      title: 'Hello Kitty Budget App',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.pinkAccent,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.pinkAccent,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: _themeMode,
-      home: Scaffold(
-        body: _buildPages()[_selectedIndex],
-        bottomNavigationBar: BottomNavigationBar(
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: Icon(Icons.calculate),
-              label: 'Budget',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings),
-              label: 'Settings',
-            ),
-          ],
-          currentIndex: _selectedIndex,
-          selectedItemColor: Colors.pinkAccent,
-          onTap: _onItemTapped,
-        ),
+    // MyApp now returns the Scaffold directly, to be used as the 'home' of AppRoot's MaterialApp
+    return Scaffold(
+      body: _buildPages()[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(icon: Icon(Icons.calculate), label: 'Budget'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor:
+            Colors.pinkAccent, // Ensure this is applied if not inherited
+        onTap: _onItemTapped,
       ),
     );
   }

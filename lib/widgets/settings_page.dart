@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:shared_preferences/shared_preferences.dart'; // Though not directly used in this diff, it's good practice if settings persist
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeChanged;
   final Function(BuildContext) onClearAllData; // Changed to accept BuildContext
@@ -20,13 +22,46 @@ class SettingsPage extends StatelessWidget {
     required this.onDefaultCurrencyChanged,
   });
 
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
   // Duplicating for simplicity, ideally this comes from a shared source
+  // or is passed in if it can change dynamically elsewhere.
   final Map<String, String> _currencySymbols = const {
     'Dollars': '\$',
     'Rupees': '₹',
     'Yen': '¥',
     'Euros': '€',
   };
+
+  late String _selectedCurrencySymbol;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCurrencySymbol = widget.defaultCurrencySymbol;
+  }
+
+  Future<void> _signOut() async {
+    print("[SettingsPage] Attempting to sign out...");
+    try {
+      await FirebaseAuth.instance.signOut();
+      print("[SettingsPage] Sign out successful from FirebaseAuth.");
+      // After signing out, the StreamBuilder in main.dart should automatically
+      // navigate the user to the LoginScreen.
+      // No explicit navigation needed here if AppRoot is set up correctly.
+    } catch (e) {
+      print("[SettingsPage] Error during sign out: $e");
+      if (mounted) {
+        // Check if the widget is still in the tree
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error signing out: $e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,13 +92,13 @@ class SettingsPage extends StatelessWidget {
               title: const Text('System Default'),
               trailing: Radio<ThemeMode>(
                 value: ThemeMode.system,
-                groupValue: themeMode,
+                groupValue: widget.themeMode,
                 onChanged: (ThemeMode? value) {
-                  if (value != null) onThemeChanged(value);
+                  if (value != null) widget.onThemeChanged(value);
                 },
                 activeColor: Theme.of(context).colorScheme.primary,
               ),
-              onTap: () => onThemeChanged(ThemeMode.system),
+              onTap: () => widget.onThemeChanged(ThemeMode.system),
             ),
             ListTile(
               leading: Icon(
@@ -73,13 +108,13 @@ class SettingsPage extends StatelessWidget {
               title: const Text('Light Mode'),
               trailing: Radio<ThemeMode>(
                 value: ThemeMode.light,
-                groupValue: themeMode,
+                groupValue: widget.themeMode,
                 onChanged: (ThemeMode? value) {
-                  if (value != null) onThemeChanged(value);
+                  if (value != null) widget.onThemeChanged(value);
                 },
                 activeColor: Theme.of(context).colorScheme.primary,
               ),
-              onTap: () => onThemeChanged(ThemeMode.light),
+              onTap: () => widget.onThemeChanged(ThemeMode.light),
             ),
             ListTile(
               leading: Icon(
@@ -89,13 +124,13 @@ class SettingsPage extends StatelessWidget {
               title: const Text('Dark Mode'),
               trailing: Radio<ThemeMode>(
                 value: ThemeMode.dark,
-                groupValue: themeMode,
+                groupValue: widget.themeMode,
                 onChanged: (ThemeMode? value) {
-                  if (value != null) onThemeChanged(value);
+                  if (value != null) widget.onThemeChanged(value);
                 },
                 activeColor: Theme.of(context).colorScheme.primary,
               ),
-              onTap: () => onThemeChanged(ThemeMode.dark),
+              onTap: () => widget.onThemeChanged(ThemeMode.dark),
             ),
             const Divider(),
             Padding(
@@ -114,7 +149,7 @@ class SettingsPage extends StatelessWidget {
               ),
               title: const Text('Default Currency'),
               trailing: DropdownButton<String>(
-                value: defaultCurrencySymbol,
+                value: _selectedCurrencySymbol, // Use state variable
                 underline: Container(), // Remove underline
                 items:
                     _currencySymbols.entries.map((entry) {
@@ -124,7 +159,13 @@ class SettingsPage extends StatelessWidget {
                       );
                     }).toList(),
                 onChanged: (String? newValue) {
-                  if (newValue != null) onDefaultCurrencyChanged(newValue);
+                  if (newValue != null) {
+                    setState(() {
+                      // Update local state for the dropdown
+                      _selectedCurrencySymbol = newValue;
+                    });
+                    widget.onDefaultCurrencyChanged(newValue); // Call callback
+                  }
                 },
               ),
             ),
@@ -136,7 +177,7 @@ class SettingsPage extends StatelessWidget {
               ),
               title: const Text('Export Data (CSV)'),
               subtitle: const Text('Share your expenses and subscriptions.'),
-              onTap: onExportData,
+              onTap: widget.onExportData,
             ),
             const Divider(),
             ListTile(
@@ -148,7 +189,7 @@ class SettingsPage extends StatelessWidget {
               subtitle: const Text(
                 'Load expenses and subscriptions from a CSV file.',
               ),
-              onTap: onImportData,
+              onTap: widget.onImportData,
             ),
             const Divider(),
 
@@ -196,10 +237,19 @@ class SettingsPage extends StatelessWidget {
                   'Clear All Data',
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-                onTap: () => onClearAllData(context),
+                onTap: () => widget.onClearAllData(context),
               ),
             ),
             const Divider(),
+            const SizedBox(height: 20), // Spacing before the button
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orangeAccent,
+              ),
+              onPressed: _signOut,
+              child: const Text('Sign Out'),
+            ),
+            const SizedBox(height: 20), // Spacing after the button
           ],
         ),
       ),

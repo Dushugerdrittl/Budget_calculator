@@ -20,19 +20,22 @@ class ExpenseEntryAdapter extends TypeAdapter<ExpenseEntry> {
       amount: fields[0] as double,
       date: fields[1] as DateTime,
       category: fields[2] as String?,
+      firestoreId: fields[3] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ExpenseEntry obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(4)
       ..writeByte(0)
       ..write(obj.amount)
       ..writeByte(1)
       ..write(obj.date)
       ..writeByte(2)
-      ..write(obj.category);
+      ..write(obj.category)
+      ..writeByte(3)
+      ..write(obj.firestoreId);
   }
 
   @override

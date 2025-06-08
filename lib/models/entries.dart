@@ -13,10 +13,14 @@ class ExpenseEntry extends HiveObject {
   @HiveField(2) // New field for category
   String? category; // Make category nullable
 
+  @HiveField(3) // New field for Firestore document ID
+  String? firestoreId; // Optional: to store Firestore document ID
+
   ExpenseEntry({
     required this.amount,
     required this.date,
     this.category = 'General', // Default category still applies for new entries
+    this.firestoreId,
   });
 }
 
@@ -31,9 +35,13 @@ class SubscriptionEntry extends HiveObject {
   @HiveField(2)
   DateTime date;
 
+  @HiveField(3) // New field for Firestore document ID
+  String? firestoreId; // Optional: to store Firestore document ID
+
   SubscriptionEntry({
     required this.name,
     required this.amount,
     required this.date,
+    this.firestoreId,
   });
 }

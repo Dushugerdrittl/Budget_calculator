@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 import '../models/entries.dart' as models;
 import 'currency_selector.dart';
 import 'expense_input.dart';
 import 'subscription_input.dart';
 import 'expense_list.dart';
-import 'subscription_list.dart';
 import 'monthly_summary.dart';
 import 'budget_graph.dart';
 import 'yearly_summary.dart';
@@ -14,19 +14,21 @@ class BudgetHomePage extends StatefulWidget {
   const BudgetHomePage({
     super.key,
     required this.title,
+    required this.userId, // Add userId
     this.initialCurrencySymbol = '\$', // Default if not provided
   });
 
   final String title;
   final String initialCurrencySymbol;
+  final String userId; // Add userId field
 
   @override
   State<BudgetHomePage> createState() => _BudgetHomePageState();
 }
 
 class _BudgetHomePageState extends State<BudgetHomePage> {
-  late Box<models.ExpenseEntry> _expenseBox;
-  late Box<models.SubscriptionEntry> _subscriptionBox;
+  // late Box<models.ExpenseEntry> _expenseBox; // Not needed as direct member
+  // late Box<models.SubscriptionEntry> _subscriptionBox; // Not needed as direct member
 
   List<models.ExpenseEntry> _expenses = [];
   List<models.SubscriptionEntry> _subscriptions = [];
@@ -40,10 +42,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   // Get unique categories from expenses for filter options
   List<String> get _availableCategories {
     final categories =
-        _expenseBox.values.map((e) => e.category ?? 'N/A').toSet().toList();
+        _getExpenseBox().values
+            .map((e) => e.category ?? 'N/A')
+            .toSet()
+            .toList();
     categories.sort();
     return categories;
   }
+
+  // Helper methods to get user-specific boxes
+  Box<models.ExpenseEntry> _getExpenseBox() =>
+      Hive.box<models.ExpenseEntry>('expenses_${widget.userId}');
+  Box<models.SubscriptionEntry> _getSubscriptionBox() =>
+      Hive.box<models.SubscriptionEntry>('subscriptions_${widget.userId}');
 
   final Map<String, String> currencySymbols = {
     'Dollars': '\$',
@@ -55,18 +66,88 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   @override
   void initState() {
     super.initState();
-    // Call super.initState() first
-    _expenseBox = Hive.box<models.ExpenseEntry>('expenses');
+    // Boxes are now opened in MyApp's initState.
+    // We just need to ensure they are ready before loading data.
     _selectedCurrency = widget.initialCurrencySymbol;
-    _subscriptionBox = Hive.box<models.SubscriptionEntry>('subscriptions');
-    _loadData();
+    _initializeAndLoadAllData();
+  }
+
+  Future<void> _initializeAndLoadAllData() async {
+    // Ensure boxes are open (this should be guaranteed by MyApp's _hiveBoxesOpened flag)
+    if (!Hive.isBoxOpen('expenses_${widget.userId}') ||
+        !Hive.isBoxOpen('subscriptions_${widget.userId}')) {
+      print("BudgetHomePage: Waiting for Hive boxes to be opened by MyApp...");
+      // Optionally, wait a short duration and retry, or rely on MyApp to trigger a rebuild
+      // For now, we assume MyApp handles this and BudgetHomePage is built when boxes are ready.
+      return;
+    }
+    await _fetchDataFromFirestoreAndPopulateHive();
+    _loadData(); // This will now load from the potentially updated Hive boxes
+  }
+
+  Future<void> _fetchDataFromFirestoreAndPopulateHive() async {
+    print("Fetching data from Firestore for user ${widget.userId}");
+    final expenseBox = _getExpenseBox();
+    final subscriptionBox = _getSubscriptionBox();
+
+    // Clear local boxes before populating from Firestore to avoid duplicates (simplistic sync)
+    await expenseBox.clear();
+    await subscriptionBox.clear();
+
+    // Fetch and populate expenses
+    final expenseSnapshots =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('expenses')
+            .get();
+    for (var doc in expenseSnapshots.docs) {
+      // When fetching, store the Firestore doc.id as firestoreId
+      final data = doc.data();
+      expenseBox.add(
+        models.ExpenseEntry(
+          amount: (data['amount'] as num).toDouble(),
+          date: (data['date'] as Timestamp).toDate(),
+          category: data['category'] as String?,
+          firestoreId: doc.id, // Store Firestore document ID
+        ),
+      );
+    }
+
+    // Fetch and populate subscriptions
+    final subscriptionSnapshots =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('subscriptions')
+            .get();
+    for (var doc in subscriptionSnapshots.docs) {
+      final data = doc.data();
+      subscriptionBox.add(
+        models.SubscriptionEntry(
+          name: data['name'] as String,
+          amount: (data['amount'] as num).toDouble(),
+          date: (data['date'] as Timestamp).toDate(),
+          firestoreId: doc.id, // Store Firestore document ID
+        ),
+      );
+    }
+    print("Data fetched from Firestore and Hive populated.");
   }
 
   void _loadData() {
+    // Ensure boxes are open before trying to access them
+    if (!Hive.isBoxOpen('expenses_${widget.userId}') ||
+        !Hive.isBoxOpen('subscriptions_${widget.userId}')) {
+      print(
+        "BudgetHomePage: _loadData called but boxes not open. User: ${widget.userId}",
+      );
+      return; // Or show a loading state / handle error
+    }
     setState(() {
-      Iterable<models.ExpenseEntry> filteredExpenses = _expenseBox.values;
+      Iterable<models.ExpenseEntry> filteredExpenses = _getExpenseBox().values;
       Iterable<models.SubscriptionEntry> filteredSubscriptions =
-          _subscriptionBox.values;
+          _getSubscriptionBox().values;
 
       // Apply search query
       if (_searchQuery.isNotEmpty) {
@@ -105,23 +186,66 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     });
   }
 
-  void _addExpense(double value, String category) {
-    final entry = models.ExpenseEntry(
+  Future<void> _addExpense(double value, String category) async {
+    // Mark as async
+    final newExpenseHive = models.ExpenseEntry(
       amount: value,
       date: DateTime.now(),
       category: category,
     );
-    _expenseBox.add(entry);
+    // Add to Hive first to get an object reference for finding index later
+    // Make this async to await the key
+    int hiveKey = await _getExpenseBox().add(newExpenseHive);
+
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId)
+        .collection('expenses')
+        .add({
+          'amount': newExpenseHive.amount,
+          'date': Timestamp.fromDate(newExpenseHive.date),
+          'category': newExpenseHive.category,
+        })
+        .then((docRef) async {
+          print("Expense added to Firestore with ID: ${docRef.id}");
+          newExpenseHive.firestoreId = docRef.id;
+          // Update the Hive entry with the firestoreId using the key from add()
+          await _getExpenseBox().put(hiveKey, newExpenseHive);
+        })
+        .catchError((error) {
+          print("Failed to add expense to Firestore: $error");
+        });
     _loadData();
   }
 
-  void _addSubscription(String name, double value) {
-    final entry = models.SubscriptionEntry(
+  Future<void> _addSubscription(String name, double value) async {
+    // Mark as async
+    final newSubscriptionHive = models.SubscriptionEntry(
       name: name,
       amount: value,
       date: DateTime.now(),
     );
-    _subscriptionBox.add(entry);
+    // Add to Hive first and get its key
+    int hiveKey = await _getSubscriptionBox().add(newSubscriptionHive);
+
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId)
+        .collection('subscriptions')
+        .add({
+          'name': newSubscriptionHive.name,
+          'amount': newSubscriptionHive.amount,
+          'date': Timestamp.fromDate(newSubscriptionHive.date),
+        })
+        .then((docRef) async {
+          print("Subscription added to Firestore with ID: ${docRef.id}");
+          newSubscriptionHive.firestoreId = docRef.id;
+          // Update the Hive entry with the firestoreId using the key from add()
+          await _getSubscriptionBox().put(hiveKey, newSubscriptionHive);
+        })
+        .catchError((error) {
+          print("Failed to add subscription to Firestore: $error");
+        });
     _loadData();
   }
 
@@ -129,22 +253,43 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     required String title,
     required double currentAmount,
     required void Function(double) onSave,
+    String? currentName, // Optional for subscriptions
+    void Function(String)? onNameSave, // Optional for subscriptions
   }) async {
-    final TextEditingController controller = TextEditingController(
+    final TextEditingController amountController = TextEditingController(
       text: currentAmount.toString(),
     );
+    final TextEditingController? nameController =
+        currentName != null ? TextEditingController(text: currentName) : null;
+
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Edit $title Amount'),
-          content: TextField(
-            controller: controller,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Amount',
-              border: OutlineInputBorder(),
-            ),
+          title: Text('Edit $title'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (nameController != null)
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              if (nameController != null) const SizedBox(height: 8),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Amount',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
           ),
           actions: <Widget>[
             TextButton(
@@ -154,9 +299,12 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             ElevatedButton(
               child: const Text('Save'),
               onPressed: () {
-                final newAmount = double.tryParse(controller.text);
+                final newAmount = double.tryParse(amountController.text);
                 if (newAmount != null && newAmount > 0) {
                   onSave(newAmount);
+                  if (nameController != null && onNameSave != null) {
+                    onNameSave(nameController.text);
+                  }
                   Navigator.of(context).pop();
                 }
               },
@@ -168,40 +316,107 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   void _editExpense(int index) {
-    final entry = _expenseBox.getAt(index);
+    final entry = _getExpenseBox().getAt(index);
     if (entry == null) return;
     _showEditAmountDialog(
       title: 'Expense',
       currentAmount: entry.amount,
-      onSave: (newAmount) {
+      onSave: (newAmount) async {
         entry.amount = newAmount;
-        entry.save();
+        await entry.save(); // Hive save
+
+        if (entry.firestoreId != null) {
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('expenses')
+              .doc(entry.firestoreId)
+              .update({'amount': newAmount})
+              .catchError((error) {
+                print("Failed to update expense in Firestore: $error");
+              });
+        }
         _loadData();
       },
     );
   }
 
   void _editSubscription(int index) {
-    final entry = _subscriptionBox.getAt(index);
+    final entry = _getSubscriptionBox().getAt(index);
     if (entry == null) return;
     _showEditAmountDialog(
       title: 'Subscription',
       currentAmount: entry.amount,
-      onSave: (newAmount) {
+      currentName: entry.name, // Pass current name
+      onSave: (newAmount) async {
         entry.amount = newAmount;
-        entry.save();
+        // Name is handled by onNameSave
+        // await entry.save(); // Hive save will be called after name save
+      },
+      onNameSave: (newName) async {
+        // Handle name change
+        entry.name = newName;
+        await entry.save(); // Save both amount and name changes to Hive
+
+        if (entry.firestoreId != null) {
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('subscriptions')
+              .doc(entry.firestoreId)
+              .update({
+                'amount': entry.amount, // Use the (potentially) updated amount
+                'name': newName,
+              })
+              .catchError((error) {
+                print("Failed to update subscription in Firestore: $error");
+              });
+        }
         _loadData();
       },
     );
   }
 
   void _deleteExpense(int index) {
-    _expenseBox.deleteAt(index);
+    final entry = _getExpenseBox().getAt(index);
+    if (entry == null) return;
+
+    _getExpenseBox().deleteAt(index); // Delete from Hive
+
+    if (entry.firestoreId != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('expenses')
+          .doc(entry.firestoreId)
+          .delete()
+          .then((_) => print("Expense deleted from Firestore"))
+          .catchError(
+            (error) => print("Failed to delete expense from Firestore: $error"),
+          );
+    }
     _loadData();
   }
 
   void _deleteSubscription(int index) {
-    _subscriptionBox.deleteAt(index);
+    final entry = _getSubscriptionBox().getAt(index);
+    if (entry == null) return;
+
+    _getSubscriptionBox().deleteAt(index); // Delete from Hive
+
+    if (entry.firestoreId != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .collection('subscriptions')
+          .doc(entry.firestoreId)
+          .delete()
+          .then((_) => print("Subscription deleted from Firestore"))
+          .catchError(
+            (error) =>
+                print("Failed to delete subscription from Firestore: $error"),
+          );
+    }
     _loadData();
   }
 
