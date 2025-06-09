@@ -14,7 +14,15 @@ class Category extends HiveObject {
   @HiveField(2)
   String userId;
 
-  Category({required this.id, required this.name, required this.userId});
+  @HiveField(3) // New field for category-specific budget
+  double? budget; // Optional budget for the category
+
+  Category({
+    required this.id,
+    required this.name,
+    required this.userId,
+    this.budget,
+  });
 
   // Factory constructor to create a Category from a Firestore document
   factory Category.fromFirestore(
@@ -25,6 +33,7 @@ class Category extends HiveObject {
       id: snapshot.id,
       name: data?['name'] ?? '',
       userId: data?['userId'] ?? '',
+      budget: (data?['budget'] as num?)?.toDouble(), // Load budget
     );
   }
 
@@ -33,6 +42,7 @@ class Category extends HiveObject {
     return {
       'name': name,
       'userId': userId,
+      'budget': budget, // Save budget
       // 'createdAt': FieldValue.serverTimestamp(), // Optional: if you want to track creation time
     };
   }

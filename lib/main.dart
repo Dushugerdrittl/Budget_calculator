@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/entries.dart' as models;
 import 'models/category.dart'; // Import the Category model
+import 'models/saving_goal.dart'; // Import the SavingGoal model
 import 'widgets/budget_home_page.dart';
 // import 'widgets/notebook_page.dart'; // This line should be removed or remain commented out
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +21,8 @@ import 'web_export_helper.dart'
 import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'firebase_options.dart'; // Import the generated Firebase options
-import 'login_screen.dart'; // Import the LoginScreen
+import 'login_screen.dart'; // Import the LoginScreen - THIS LINE IS ALREADY PRESENT, NO CHANGE NEEDED
+import 'services/notification_service.dart'; // Import NotificationService
 
 const String _themeModePrefsKey =
     'themeModeIndex'; // Use a constant for the key
@@ -34,6 +37,10 @@ Future<void> main() async {
   Hive.registerAdapter(models.ExpenseEntryAdapter());
   Hive.registerAdapter(models.SubscriptionEntryAdapter());
   Hive.registerAdapter(CategoryAdapter()); // Register the new adapter
+  Hive.registerAdapter(SavingGoalAdapter()); // Register the SavingGoal adapter
+
+  // Initialize NotificationService
+  await NotificationService().init();
 
   // We will open user-specific boxes after login, so remove global box opening here.
   // await Hive.openBox<models.ExpenseEntry>('expenses');
@@ -202,6 +209,7 @@ class _MyAppState extends State<MyApp> {
     // Trigger a rebuild of BudgetHomePage if necessary, e.g., by updating its key
     // or ensuring BudgetHomePage re-reads from the new boxes.
     _budgetHomePageKey = UniqueKey();
+    _scheduleSubscriptionReminders(); // Add this call
   }
 
   Future<void> _setDefaultCurrency(String currencySymbol) async {
@@ -212,6 +220,72 @@ class _MyAppState extends State<MyApp> {
       _budgetHomePageKey =
           UniqueKey(); // Refresh budget page to reflect new default
     });
+  }
+
+  Future<void> _scheduleSubscriptionReminders() async {
+    final userId = widget.currentUser.uid;
+    final subscriptionBox = Hive.box<models.SubscriptionEntry>(
+      'subscriptions_$userId',
+    );
+    final notificationService = NotificationService();
+
+    for (var entry in subscriptionBox.values) {
+      if (entry.firestoreId == null) continue; // Should have a firestoreId
+
+      // Only proceed if reminders are enabled for this subscription
+      if (entry.enableReminder != true) {
+        // Treat null as false
+        continue;
+      }
+
+      // Reminder a day before the due date at 9 AM
+      DateTime baseDueDate =
+          entry.nextDueDate ??
+          entry.date; // Use entry.date if nextDueDate is somehow null
+      DateTime reminderDateTime = baseDueDate.subtract(const Duration(days: 1));
+      reminderDateTime = DateTime(
+        reminderDateTime.year,
+        reminderDateTime.month,
+        reminderDateTime.day,
+        9,
+        0,
+        0,
+      );
+
+      // Check if the reminder date is in the future and not already scheduled
+      if (reminderDateTime.isAfter(DateTime.now()) &&
+          !(entry.reminderScheduled ?? false)) {
+        // Use a unique ID for each notification.
+        // We can derive it from the subscription's Firestore ID.
+        // Firestore IDs are strings, notifications need int IDs.
+        // A simple hash or a more robust mapping might be needed if IDs clash.
+        // For now, let's use the hash code of the firestoreId.
+        final notificationId = entry.firestoreId.hashCode;
+
+        await notificationService.scheduleNotification(
+          id: notificationId,
+          title: 'Subscription Due Soon: ${entry.name}',
+          body:
+              '${entry.name} for \$${entry.amount.toStringAsFixed(2)} is due tomorrow!',
+          scheduledDateTime: reminderDateTime,
+          payload: 'subscription_${entry.firestoreId}', // Optional payload
+        );
+
+        // Mark as scheduled in Hive and update Firestore
+        entry.reminderScheduled = true;
+        await entry.save(); // Save to Hive
+        await FirebaseFirestore
+            .instance // This line should work if cloud_firestore is imported.
+            .collection('users')
+            .doc(userId)
+            .collection('subscriptions')
+            .doc(entry.firestoreId)
+            .update({
+              'reminderScheduled': true,
+              'enableReminder': entry.enableReminder,
+            }); // Also save enableReminder status
+      }
+    }
   }
 
   Future<void> _handleClearAllData(BuildContext contextForDialog) async {
@@ -453,6 +527,8 @@ class _MyAppState extends State<MyApp> {
       BudgetHomePage(
         key: _budgetHomePageKey, // Assign the key here
         initialCurrencySymbol: _currentDefaultCurrency,
+        scheduleRemindersCallback:
+            _scheduleSubscriptionReminders, // Pass the callback
         userId: widget.currentUser.uid, // Pass userId to BudgetHomePage
         title: 'Hello Kitty Budget Calculator',
       ),

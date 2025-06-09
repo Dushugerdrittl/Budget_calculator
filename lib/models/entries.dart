@@ -38,10 +38,42 @@ class SubscriptionEntry extends HiveObject {
   @HiveField(3) // New field for Firestore document ID
   String? firestoreId; // Optional: to store Firestore document ID
 
+  @HiveField(4) // New field for the next due date of the subscription
+  DateTime? nextDueDate;
+
+  @HiveField(
+    5,
+  ) // New field to track if a reminder has been scheduled for the current nextDueDate
+  bool? reminderScheduled;
+
+  @HiveField(
+    6,
+  ) // New field to control if reminders are enabled for this subscription
+  bool? enableReminder;
+
   SubscriptionEntry({
     required this.name,
     required this.amount,
     required this.date,
     this.firestoreId,
-  });
+    this.nextDueDate,
+    this.reminderScheduled,
+    this.enableReminder = false, // Default to false for new entries
+  }) {
+    // Ensure nextDueDate has a default if not provided
+    this.nextDueDate = this.nextDueDate ?? date;
+  }
+
+  // Helper to advance the next due date by one month
+  // Call this after a payment is made or a reminder is acknowledged
+  void advanceNextDueDate() {
+    if (nextDueDate == null)
+      return; // Or handle appropriately, e.g., set to DateTime.now() then advance
+    nextDueDate = DateTime(
+      nextDueDate!.year,
+      nextDueDate!.month + 1,
+      nextDueDate!.day,
+    );
+    reminderScheduled = false; // Explicitly set to false after advancing
+  }
 }

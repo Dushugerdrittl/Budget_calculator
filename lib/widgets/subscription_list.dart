@@ -7,6 +7,7 @@ class SubscriptionList extends StatelessWidget {
   final String currency;
   final void Function(int index) onDelete;
   final void Function(int index) onEdit;
+  final void Function(int index) onMarkAsPaid; // Callback for marking as paid
 
   const SubscriptionList({
     super.key,
@@ -14,6 +15,7 @@ class SubscriptionList extends StatelessWidget {
     required this.currency,
     required this.onDelete,
     required this.onEdit,
+    required this.onMarkAsPaid,
   });
 
   @override
@@ -22,61 +24,82 @@ class SubscriptionList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Subscriptions:',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.pink,
+        if (subscriptions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+            child: Text(
+              'Subscriptions:',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.secondary,
+              ),
+            ),
           ),
-        ),
         ...subscriptions.asMap().entries.map((entry) {
           int idx = entry.key;
           models.SubscriptionEntry s = entry.value;
-          return Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.pink.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.pink.shade200),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    s.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.pink,
+          bool isReminderEnabled = s.enableReminder ?? false;
+          bool isReminderScheduled = s.reminderScheduled ?? false;
+
+          return Card(
+            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            elevation: 2,
+            child: ListTile(
+              leading: Icon(
+                Icons.autorenew, // Changed icon for subscriptions
+                color: Theme.of(context).colorScheme.secondary,
+                size: 30,
+              ),
+              title: Text(
+                s.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Amount: $currency${s.amount.toStringAsFixed(2)}'),
+                  Text(
+                    'Next Due: ${s.nextDueDate != null ? formatter.format(s.nextDueDate!) : 'N/A'}',
+                  ),
+                  if (isReminderEnabled)
+                    Text(
+                      isReminderScheduled
+                          ? 'Reminder Scheduled'
+                          : 'Reminder Pending (App Restart)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color:
+                            isReminderScheduled ? Colors.green : Colors.orange,
+                      ),
                     ),
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      Icons.payment,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    tooltip: 'Mark as Paid & Advance Due Date',
+                    onPressed: () => onMarkAsPaid(idx),
                   ),
-                ),
-                Text(
-                  formatter.format(s.date),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.pink,
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blueAccent),
+                    onPressed: () => onEdit(idx),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  '$currency${s.amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.pinkAccent,
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                    onPressed: () => onDelete(idx),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.pink),
-                  onPressed: () => onEdit(idx),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.redAccent),
-                  onPressed: () => onDelete(idx),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         }),

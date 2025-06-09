@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'manage_categories_page.dart'; // Import the new page
+import 'manage_savings_goals_page.dart'; // Import Savings Goals page
+import '../services/notification_service.dart'; // Import NotificationService
 import 'package:shared_preferences/shared_preferences.dart'; // Though not directly used in this diff, it's good practice if settings persist
 
 class SettingsPage extends StatefulWidget {
@@ -301,6 +303,52 @@ class _SettingsPageState extends State<SettingsPage> {
                             builder:
                                 (context) =>
                                     ManageCategoriesPage(userId: user.uid),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.notifications_active_outlined,
+                      color: Theme.of(context).colorScheme.tertiary,
+                    ),
+                    title: Text(
+                      'Test Notification',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    onTap: () {
+                      NotificationService().showSimpleNotification(
+                        id: 999, // A unique ID for the test notification
+                        title: 'Test Notification!',
+                        body: 'This is a test notification from Expance App.',
+                      );
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.savings_outlined,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Manage Savings Goals',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    onTap: () {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) =>
+                                    ManageSavingsGoalsPage(userId: user.uid),
                           ),
                         );
                       }

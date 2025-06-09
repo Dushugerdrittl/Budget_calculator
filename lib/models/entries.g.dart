@@ -64,13 +64,16 @@ class SubscriptionEntryAdapter extends TypeAdapter<SubscriptionEntry> {
       amount: fields[1] as double,
       date: fields[2] as DateTime,
       firestoreId: fields[3] as String?,
+      nextDueDate: fields[4] as DateTime?,
+      reminderScheduled: fields[5] as bool?,
+      enableReminder: fields[6] as bool?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SubscriptionEntry obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.name)
       ..writeByte(1)
@@ -78,7 +81,13 @@ class SubscriptionEntryAdapter extends TypeAdapter<SubscriptionEntry> {
       ..writeByte(2)
       ..write(obj.date)
       ..writeByte(3)
-      ..write(obj.firestoreId);
+      ..write(obj.firestoreId)
+      ..writeByte(4)
+      ..write(obj.nextDueDate)
+      ..writeByte(5)
+      ..write(obj.reminderScheduled)
+      ..writeByte(6)
+      ..write(obj.enableReminder);
   }
 
   @override

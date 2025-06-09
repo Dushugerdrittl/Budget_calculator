@@ -1,3 +1,4 @@
+import 'package:expance/widgets/subscription_list.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart'; // For date formatting
@@ -11,18 +12,21 @@ import 'expense_list.dart';
 import 'monthly_summary.dart';
 import 'budget_graph.dart';
 import 'yearly_summary.dart';
+import '../services/notification_service.dart'; // Import NotificationService
 
 class BudgetHomePage extends StatefulWidget {
   const BudgetHomePage({
     super.key,
     required this.title,
     required this.userId, // Add userId
+    required this.scheduleRemindersCallback, // Add callback for scheduling
     this.initialCurrencySymbol = '\$', // Default if not provided
   });
 
   final String title;
   final String initialCurrencySymbol;
   final String userId; // Add userId field
+  final Future<void> Function() scheduleRemindersCallback; // Callback
 
   @override
   State<BudgetHomePage> createState() => _BudgetHomePageState();
@@ -86,7 +90,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       return;
     }
     await _fetchDataFromFirestoreAndPopulateHive();
-    _loadData();
+    _loadData(); // This will call _checkCategoryBudgets
   }
 
   Future<void> _fetchDataFromFirestoreAndPopulateHive() async {
@@ -129,6 +133,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           amount: (data['amount'] as num).toDouble(),
           date: (data['date'] as Timestamp).toDate(),
           firestoreId: doc.id,
+          nextDueDate:
+              (data['nextDueDate'] as Timestamp?)?.toDate() ??
+              (data['date'] as Timestamp).toDate(),
+          reminderScheduled: data['reminderScheduled'] as bool? ?? false,
+          enableReminder: data['enableReminder'] as bool? ?? false,
         ),
       );
     }
@@ -204,6 +213,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       }
     });
     _applySorting();
+    _checkCategoryBudgets(); // Also check after filtering/sorting if data changes
   }
 
   void _applySorting() {
@@ -283,11 +293,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     _loadData();
   }
 
-  Future<void> _addSubscription(String name, double value) async {
+  Future<void> _addSubscription(
+    String name,
+    double value,
+    bool enableReminder,
+    DateTime nextDueDate,
+  ) async {
     final newSubscriptionHive = models.SubscriptionEntry(
       name: name,
       amount: value,
       date: DateTime.now(),
+      nextDueDate: nextDueDate,
+      enableReminder: enableReminder,
     );
     int hiveKey = await _getSubscriptionBox().add(newSubscriptionHive);
 
@@ -299,6 +316,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           'name': newSubscriptionHive.name,
           'amount': newSubscriptionHive.amount,
           'date': Timestamp.fromDate(newSubscriptionHive.date),
+          'nextDueDate': Timestamp.fromDate(newSubscriptionHive.nextDueDate!),
+          'enableReminder': newSubscriptionHive.enableReminder,
+          'reminderScheduled': newSubscriptionHive.reminderScheduled ?? false,
         })
         .then((docRef) async {
           print("Subscription added to Firestore with ID: ${docRef.id}");
@@ -454,6 +474,34 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     _loadData();
   }
 
+  Future<void> _markSubscriptionAsPaid(int index) async {
+    final entry = _getSubscriptionBox().getAt(index);
+    if (entry == null) return;
+
+    entry.advanceNextDueDate();
+    await entry.save();
+
+    if (entry.firestoreId != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('subscriptions')
+            .doc(entry.firestoreId)
+            .update({
+              'nextDueDate': Timestamp.fromDate(entry.nextDueDate!),
+              'reminderScheduled': entry.reminderScheduled ?? false,
+            });
+        await widget.scheduleRemindersCallback();
+      } catch (e) {
+        print(
+          "Error updating subscription in Firestore after marking as paid: $e",
+        );
+      }
+    }
+    _loadData();
+  }
+
   void _deleteSubscription(int index) {
     final entry = _getSubscriptionBox().getAt(index);
     if (entry == null) return;
@@ -512,7 +560,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.0),
               ),
-              prefixText: '$_selectedCurrency ', // Show current currency symbol
+              prefixText: '$_selectedCurrency ',
             ),
             autofocus: true,
           ),
@@ -833,6 +881,77 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     return totalExpenses + totalSubscriptions;
   }
 
+  void _checkCategoryBudgets() {
+    print("[BudgetCheck] Running _checkCategoryBudgets...");
+
+    if (!_getCategoryBox().isOpen || !_getExpenseBox().isOpen) {
+      print("Budget check skipped: Boxes not open.");
+      return;
+    }
+
+    final now = DateTime.now();
+    final currentMonthExpenses =
+        _getExpenseBox().values
+            .where(
+              (expense) =>
+                  expense.date.year == now.year &&
+                  expense.date.month == now.month,
+            )
+            .toList();
+
+    print(
+      "[BudgetCheck] Current month expenses count: ${currentMonthExpenses.length}",
+    );
+
+    Map<String, double> spendingPerCategory = {};
+    for (var expense in currentMonthExpenses) {
+      if (expense.category != null) {
+        spendingPerCategory[expense.category!] =
+            (spendingPerCategory[expense.category!] ?? 0) + expense.amount;
+      }
+    }
+    print(
+      "[BudgetCheck] Spending per category this month: $spendingPerCategory",
+    );
+
+    final categories = _getCategoryBox().values;
+    for (var category in categories) {
+      print(
+        "[BudgetCheck] Checking category: ${category.name}, Budget: ${category.budget}",
+      );
+      if (category.budget != null && category.budget! > 0) {
+        double spent = spendingPerCategory[category.name] ?? 0.0;
+        double budget = category.budget!;
+        double percentageSpent = (spent / budget) * 100;
+
+        print(
+          "[BudgetCheck] For category '${category.name}': Spent: $spent, Budget: $budget, Percentage: ${percentageSpent.toStringAsFixed(1)}%",
+        );
+
+        final int warningNotificationId = 1000000 + category.id.hashCode.abs();
+        final int alertNotificationId = 2000000 + category.id.hashCode.abs();
+
+        if (percentageSpent >= 100) {
+          // print("ALERT: Budget EXCEEDED for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%)");
+          NotificationService().showSimpleNotification(
+            id: alertNotificationId,
+            title: 'Budget Exceeded: ${category.name}',
+            body:
+                'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
+          );
+        } else if (percentageSpent >= 80) {
+          // print("WARNING: Budget APPROACHING for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%)");
+          NotificationService().showSimpleNotification(
+            id: warningNotificationId,
+            title: 'Budget Warning: ${category.name}',
+            body:
+                'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%) of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isOverBudget =
@@ -983,6 +1102,15 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                           onEdit: _editExpense,
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Add SubscriptionList here
+                    SubscriptionList(
+                      subscriptions: _subscriptions,
+                      currency: _selectedCurrency,
+                      onDelete: _deleteSubscription,
+                      onEdit: _editSubscription,
+                      onMarkAsPaid: _markSubscriptionAsPaid,
                     ),
                     const SizedBox(height: 12),
                     Container(

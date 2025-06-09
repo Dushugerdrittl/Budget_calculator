@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-// import 'package:firebase_auth/firebase_auth.dart'; // Not strictly needed if userId is passed
 import '../models/category.dart';
 
 class ManageCategoriesPage extends StatefulWidget {
@@ -17,13 +16,14 @@ class ManageCategoriesPage extends StatefulWidget {
 class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
   late Box<Category> _categoryBox;
   final TextEditingController _categoryNameController = TextEditingController();
+  final TextEditingController _categoryBudgetController =
+      TextEditingController(); // Controller for budget
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
     _openBox().then((_) {
-      // After the box is open, load categories from Firestore
       _loadCategoriesFromFirestore();
     });
   }
@@ -36,9 +36,8 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
     } else {
       _categoryBox = Hive.box<Category>('categories_${widget.userId}');
     }
-    // No need to call _loadCategoriesFromFirestore here if ValueListenableBuilder handles updates
     if (mounted) {
-      setState(() {}); // To rebuild with the opened box
+      setState(() {});
     }
   }
 
@@ -52,7 +51,6 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
               .get();
 
       if (!_categoryBox.isOpen) {
-        // Ensure box is open before writing
         await _openBox();
         print(
           "Category box was not open during Firestore load. This shouldn't happen if _openBox is called in initState.",
@@ -62,16 +60,10 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
 
       final firestoreCategories =
           querySnapshot.docs.map((doc) {
-            final data = doc.data();
-            return Category(
-              id: doc.id,
-              name: data['name'],
-              userId: data['userId'],
-            );
+            return Category.fromFirestore(doc); // Use factory constructor
           }).toList();
 
       for (var category in firestoreCategories) {
-        // Add or update in Hive. Using ID as key.
         await _categoryBox.put(category.id, category);
       }
 
@@ -89,137 +81,23 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
     }
   }
 
-  Future<void> _addCategoryDialog() async {
-    _categoryNameController.clear();
-    String? categoryName = await showDialog<String>(
-      context: context,
-      barrierDismissible: false, // User must tap button!
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15.0),
-          ),
-          title: Row(
-            children: [
-              Icon(
-                Icons.add_circle_outline,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Add New Category',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
-          content: SingleChildScrollView(
-            child: TextField(
-              controller: _categoryNameController,
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                hintText: "Category Name",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-              ),
-            ),
-          ),
-          contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
-          actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(
-                  context,
-                ).textTheme.bodyLarge?.color?.withOpacity(0.7),
-              ),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            ElevatedButton(
-              child: const Text('Add'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
-              onPressed: () {
-                final name = _categoryNameController.text.trim();
-                if (name.isNotEmpty) {
-                  Navigator.of(context).pop(name);
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
+  Future<void> _addOrEditCategoryDialog({Category? existingCategory}) async {
+    final bool isEditing = existingCategory != null;
+    _categoryNameController.text = existingCategory?.name ?? '';
+    _categoryBudgetController.text =
+        existingCategory?.budget?.toStringAsFixed(2) ?? ''; // Format budget
 
-    if (categoryName != null && categoryName.isNotEmpty) {
-      // Check for duplicates (case-insensitive) in Hive box
-      final existing = _categoryBox.values.any(
-        (cat) => cat.name.toLowerCase() == categoryName.toLowerCase(),
-      );
-      if (existing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Category "$categoryName" already exists.')),
-        );
-        return;
-      }
-
-      try {
-        // Create a new document reference to get an ID
-        final newCategoryRef =
-            _firestore
-                .collection('users')
-                .doc(widget.userId)
-                .collection('categories')
-                .doc();
-
-        final newCategory = Category(
-          id: newCategoryRef.id,
-          name: categoryName,
-          userId: widget.userId,
-        );
-
-        // Add to Firestore
-        await newCategoryRef.set({
-          'name': newCategory.name,
-          'userId':
-              newCategory
-                  .userId, // Storing userId for potential cross-user queries (though rules prevent)
-        });
-        // Add to Hive, using Firestore ID as key
-        await _categoryBox.put(newCategory.id, newCategory);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Category "$categoryName" added.')),
-          );
-          // ValueListenableBuilder will automatically update the UI
-        }
-      } catch (e) {
-        print("Error adding category: $e");
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to add category: $e')));
-        }
-      }
-    }
-  }
-
-  Future<void> _editCategoryDialog(Category category) async {
-    _categoryNameController.text = category.name; // Pre-fill current name
-    String? updatedName = await showDialog<String>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
+        // Use a local controller for the dialog to avoid issues if the main controller is cleared prematurely
+        final TextEditingController localNameController = TextEditingController(
+          text: _categoryNameController.text,
+        );
+        final TextEditingController localBudgetController =
+            TextEditingController(text: _categoryBudgetController.text);
+
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15.0),
@@ -227,31 +105,50 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
           title: Row(
             children: [
               Icon(
-                Icons.edit_note,
+                isEditing ? Icons.edit_note : Icons.add_circle_outline,
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Edit Category "${category.name}"',
+                  isEditing ? 'Edit Category' : 'Add New Category',
                   style: const TextStyle(fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
           titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
           content: SingleChildScrollView(
-            child: TextField(
-              controller: _categoryNameController,
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                hintText: "New Category Name",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: localNameController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: "Category Name",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: localBudgetController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: "Monthly Budget (Optional)",
+                    hintText: "e.g., 100.00",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    prefixIcon: const Icon(Icons.monetization_on_outlined),
+                  ),
+                ),
+              ],
             ),
           ),
           contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
@@ -264,18 +161,45 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                   context,
                 ).textTheme.bodyLarge?.color?.withOpacity(0.7),
               ),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // Pop with no result
+              },
             ),
             ElevatedButton(
-              child: const Text('Save'),
+              child: Text(isEditing ? 'Save' : 'Add'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
               onPressed: () {
-                final name = _categoryNameController.text.trim();
+                final name = localNameController.text.trim();
+                final budgetStr = localBudgetController.text.trim();
+                double? budgetValue;
+                if (budgetStr.isNotEmpty) {
+                  budgetValue = double.tryParse(budgetStr);
+                  if (budgetValue == null || budgetValue < 0) {
+                    // Basic validation for budget
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Please enter a valid positive budget or leave it empty.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                }
+
                 if (name.isNotEmpty) {
-                  Navigator.of(context).pop(name);
+                  Navigator.of(
+                    dialogContext,
+                  ).pop({'name': name, 'budget': budgetValue});
+                } else {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Category name cannot be empty.'),
+                    ),
+                  );
                 }
               },
             ),
@@ -284,73 +208,96 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
       },
     );
 
-    if (updatedName != null &&
-        updatedName.isNotEmpty &&
-        updatedName != category.name) {
-      // Check for duplicates (case-insensitive) - excluding the current category being edited
-      final existing = _categoryBox.values.any(
-        (cat) =>
-            cat.id != category.id &&
-            cat.name.toLowerCase() == updatedName.toLowerCase(),
-      );
-      if (existing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Another category with the name "$updatedName" already exists.',
-            ),
-          ),
+    if (result != null) {
+      final categoryName = result['name'] as String?;
+      final categoryBudget = result['budget'] as double?;
+
+      if (categoryName != null && categoryName.isNotEmpty) {
+        final existing = _categoryBox.values.any(
+          (cat) =>
+              cat.name.toLowerCase() == categoryName.toLowerCase() &&
+              (!isEditing || cat.id != existingCategory?.id),
         );
-        return;
-      }
 
-      final updatedCategory = Category(
-        id: category.id,
-        name: updatedName,
-        userId: category.userId,
-      );
-
-      try {
-        // Update in Firestore
-        await _firestore
-            .collection('users')
-            .doc(widget.userId)
-            .collection('categories')
-            .doc(category.id)
-            .update({'name': updatedName});
-
-        // Update in Hive
-        await _categoryBox.put(category.id, updatedCategory);
-
-        if (mounted) {
+        if (existing) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Category "${category.name}" updated to "$updatedName".',
-              ),
-            ),
+            SnackBar(content: Text('Category "$categoryName" already exists.')),
           );
-          // ValueListenableBuilder will update the UI
+          return;
         }
-      } catch (e) {
-        print("Error updating category: $e");
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error updating category: $e')),
+
+        if (isEditing && existingCategory != null) {
+          final updatedCategory = Category(
+            id: existingCategory.id,
+            name: categoryName,
+            userId: widget.userId,
+            budget: categoryBudget,
           );
+          try {
+            await _firestore
+                .collection('users')
+                .doc(widget.userId)
+                .collection('categories')
+                .doc(updatedCategory.id)
+                .set(updatedCategory.toFirestore(), SetOptions(merge: true));
+            await _categoryBox.put(updatedCategory.id, updatedCategory);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Category "${updatedCategory.name}" updated.'),
+                ),
+              );
+            }
+          } catch (e) {
+            print("Error updating category: $e");
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error updating category: $e')),
+              );
+            }
+          }
+        } else {
+          // Add new category
+          try {
+            final newCategoryRef =
+                _firestore
+                    .collection('users')
+                    .doc(widget.userId)
+                    .collection('categories')
+                    .doc();
+
+            final newCategory = Category(
+              id: newCategoryRef.id,
+              name: categoryName,
+              userId: widget.userId,
+              budget: categoryBudget,
+            );
+
+            await newCategoryRef.set(newCategory.toFirestore());
+            await _categoryBox.put(newCategory.id, newCategory);
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Category "$categoryName" added.')),
+              );
+            }
+          } catch (e) {
+            print("Error adding category: $e");
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to add category: $e')),
+              );
+            }
+          }
         }
       }
     }
+    // Clear main controllers after dialog is closed, regardless of result
+    _categoryNameController.clear();
+    _categoryBudgetController.clear();
   }
 
   Future<void> _deleteCategory(Category category) async {
-    // TODO: Consider implications: What happens to expenses/subscriptions using this category?
-    // For now, we'll just delete the category.
-    // A more robust solution might involve:
-    // 1. Preventing deletion if in use.
-    // 2. Allowing re-assignment of expenses/subscriptions.
-    // 3. Marking category as "archived" instead of deleting.
-
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
@@ -405,22 +352,17 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
 
     if (confirmed == true) {
       try {
-        // Delete from Firestore
         await _firestore
             .collection('users')
             .doc(widget.userId)
             .collection('categories')
             .doc(category.id)
             .delete();
-
-        // Delete from Hive
         await _categoryBox.delete(category.id);
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Category "${category.name}" deleted.')),
           );
-          // ValueListenableBuilder will update the UI
         }
       } catch (e) {
         print("Error deleting category: $e");
@@ -446,12 +388,12 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
               : ValueListenableBuilder<Box<Category>>(
                 valueListenable: _categoryBox.listenable(),
                 builder: (context, box, _) {
-                  final categories = box.values.toList();
-                  // Sort categories alphabetically by name (case-insensitive)
-                  categories.sort(
-                    (a, b) =>
-                        a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-                  );
+                  final categories =
+                      box.values.toList()..sort(
+                        (a, b) => a.name.toLowerCase().compareTo(
+                          b.name.toLowerCase(),
+                        ),
+                      );
 
                   if (categories.isEmpty) {
                     return const Center(
@@ -469,6 +411,19 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                         ),
                         child: ListTile(
                           title: Text(category.name),
+                          subtitle:
+                              category.budget != null
+                                  ? Text(
+                                    'Budget: \$${category.budget!.toStringAsFixed(2)}', // Assuming USD for now
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall?.color,
+                                    ),
+                                  )
+                                  : null,
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -477,7 +432,10 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                                   Icons.edit,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
-                                onPressed: () => _editCategoryDialog(category),
+                                onPressed:
+                                    () => _addOrEditCategoryDialog(
+                                      existingCategory: category,
+                                    ),
                                 tooltip: 'Edit Category',
                               ),
                               IconButton(
@@ -497,7 +455,7 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                 },
               ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _addCategoryDialog,
+        onPressed: () => _addOrEditCategoryDialog(),
         tooltip: 'Add Category',
         child: const Icon(Icons.add),
       ),
