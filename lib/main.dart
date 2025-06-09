@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'models/entries.dart' as models;
+import 'models/category.dart'; // Import the Category model
 import 'widgets/budget_home_page.dart';
 // import 'widgets/notebook_page.dart'; // This line should be removed or remain commented out
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,6 +33,7 @@ Future<void> main() async {
   await Hive.initFlutter();
   Hive.registerAdapter(models.ExpenseEntryAdapter());
   Hive.registerAdapter(models.SubscriptionEntryAdapter());
+  Hive.registerAdapter(CategoryAdapter()); // Register the new adapter
 
   // We will open user-specific boxes after login, so remove global box opening here.
   // await Hive.openBox<models.ExpenseEntry>('expenses');
@@ -193,6 +195,9 @@ class _MyAppState extends State<MyApp> {
     print("[MyApp] Opening Hive boxes for user: $userId");
     await Hive.openBox<models.ExpenseEntry>('expenses_$userId');
     await Hive.openBox<models.SubscriptionEntry>('subscriptions_$userId');
+    await Hive.openBox<Category>(
+      'categories_$userId',
+    ); // Open category box for the user
     print("[MyApp] Hive boxes opened for user: $userId");
     // Trigger a rebuild of BudgetHomePage if necessary, e.g., by updating its key
     // or ensuring BudgetHomePage re-reads from the new boxes.
@@ -214,18 +219,51 @@ class _MyAppState extends State<MyApp> {
       context: contextForDialog, // Use the context passed from SettingsPage
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Confirm Clear Data'),
-          content: const Text(
-            'Are you sure you want to delete all expenses and subscriptions? This action cannot be undone.',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15.0),
           ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Confirm Clear Data',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
+          content: const Text(
+            'Are you sure you want to delete all your expenses and subscriptions?\n\nThis action cannot be undone.',
+            style: TextStyle(fontSize: 16.0),
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
+          actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.color?.withOpacity(0.7),
+              ),
               onPressed: () => Navigator.of(context).pop(false),
             ),
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Clear Data'),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8.0,
+                ),
+              ),
+              child: const Text('Yes, Clear Data'),
               onPressed: () => Navigator.of(context).pop(true),
             ),
           ],
@@ -465,8 +503,9 @@ class _MyAppState extends State<MyApp> {
           ),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor:
-            Colors.pinkAccent, // Ensure this is applied if not inherited
+        selectedItemColor: Colors.pinkAccent,
+        unselectedItemColor:
+            Colors.pink.shade200, // Softer color for unselected items
         onTap: _onItemTapped,
       ),
     );

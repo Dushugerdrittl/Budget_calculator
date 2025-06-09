@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'manage_categories_page.dart'; // Import the new page
 import 'package:shared_preferences/shared_preferences.dart'; // Though not directly used in this diff, it's good practice if settings persist
 
 class SettingsPage extends StatefulWidget {
@@ -70,188 +71,299 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('Settings'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                'Appearance',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+      body: Stack(
+        // Wrap with Stack
+        fit: StackFit.expand,
+        children: [
+          // Background image
+          Image.asset(
+            'assets/images/hellokittyx.png', // Same background image
+            fit: BoxFit.cover,
+            color: Colors.pinkAccent.withOpacity(0.6), // Same overlay
+            colorBlendMode: BlendMode.modulate,
+          ),
+          // Original content
+          SafeArea(
+            // Ensure content is within safe areas
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ListView(
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'Appearance',
+                      style: TextStyle(
+                        fontSize:
+                            Theme.of(context).textTheme.titleLarge?.fontSize,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            Theme.of(
+                              context,
+                            ).colorScheme.primary, // Adapts to theme
+                      ),
+                    ),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.brightness_auto,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'System Default',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    trailing: Radio<ThemeMode>(
+                      value: ThemeMode.system,
+                      groupValue: widget.themeMode,
+                      onChanged: (ThemeMode? value) {
+                        if (value != null) widget.onThemeChanged(value);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                    ),
+                    onTap: () => widget.onThemeChanged(ThemeMode.system),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.wb_sunny,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Light Mode',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    trailing: Radio<ThemeMode>(
+                      value: ThemeMode.light,
+                      groupValue: widget.themeMode,
+                      onChanged: (ThemeMode? value) {
+                        if (value != null) widget.onThemeChanged(value);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                    ),
+                    onTap: () => widget.onThemeChanged(ThemeMode.light),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.brightness_2,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Dark Mode',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    trailing: Radio<ThemeMode>(
+                      value: ThemeMode.dark,
+                      groupValue: widget.themeMode,
+                      onChanged: (ThemeMode? value) {
+                        if (value != null) widget.onThemeChanged(value);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                    ),
+                    onTap: () => widget.onThemeChanged(ThemeMode.dark),
+                  ),
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'Preferences',
+                      style: TextStyle(
+                        fontSize:
+                            Theme.of(context).textTheme.titleLarge?.fontSize,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            Theme.of(
+                              context,
+                            ).colorScheme.primary, // Adapts to theme
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.attach_money,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Default Currency',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    trailing: DropdownButton<String>(
+                      value: _selectedCurrencySymbol, // Use state variable
+                      underline: Container(), // Remove underline
+                      items:
+                          _currencySymbols.entries.map((entry) {
+                            return DropdownMenuItem<String>(
+                              value: entry.value,
+                              child: Text(
+                                overflow:
+                                    TextOverflow.ellipsis, // Handle long text
+                                '${entry.key} (${entry.value})',
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.bodyLarge?.color,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                      onChanged: (String? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            // Update local state for the dropdown
+                            _selectedCurrencySymbol = newValue;
+                          });
+                          widget.onDefaultCurrencyChanged(
+                            newValue,
+                          ); // Call callback
+                        }
+                      },
+                    ),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.download_for_offline_outlined,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Export Data (CSV)',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Share your expenses and subscriptions.',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                    ),
+                    onTap: widget.onExportData,
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.upload_file_outlined,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Import Data (CSV)',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Load expenses and subscriptions from a CSV file.',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                    ),
+                    onTap: widget.onImportData,
+                  ),
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'Advanced',
+                      style: TextStyle(
+                        fontSize:
+                            Theme.of(context).textTheme.titleLarge?.fontSize,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.category,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Manage Categories',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    onTap: () {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) =>
+                                    ManageCategoriesPage(userId: user.uid),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'Data Management',
+                      style: TextStyle(
+                        fontSize:
+                            Theme.of(context).textTheme.titleLarge?.fontSize,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            Theme.of(
+                              context,
+                            ).colorScheme.primary, // Adapts to theme
+                      ),
+                    ),
+                  ),
+                  Card(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withOpacity(0.3),
+                    elevation:
+                        0, // Optional: remove card shadow for a flatter look
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.error,
+                        width: 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.warning_amber_rounded,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      title: Text(
+                        'Clear All Data',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      onTap: () => widget.onClearAllData(context),
+                    ),
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 20), // Spacing before the button
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orangeAccent,
+                    ),
+                    onPressed: _signOut,
+                    child: const Text('Sign Out'),
+                  ),
+                  const SizedBox(height: 20), // Spacing after the button
+                ],
               ),
             ),
-            const Divider(),
-            ListTile(
-              leading: Icon(
-                Icons.brightness_auto,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              title: const Text('System Default'),
-              trailing: Radio<ThemeMode>(
-                value: ThemeMode.system,
-                groupValue: widget.themeMode,
-                onChanged: (ThemeMode? value) {
-                  if (value != null) widget.onThemeChanged(value);
-                },
-                activeColor: Theme.of(context).colorScheme.primary,
-              ),
-              onTap: () => widget.onThemeChanged(ThemeMode.system),
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.wb_sunny,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              title: const Text('Light Mode'),
-              trailing: Radio<ThemeMode>(
-                value: ThemeMode.light,
-                groupValue: widget.themeMode,
-                onChanged: (ThemeMode? value) {
-                  if (value != null) widget.onThemeChanged(value);
-                },
-                activeColor: Theme.of(context).colorScheme.primary,
-              ),
-              onTap: () => widget.onThemeChanged(ThemeMode.light),
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.brightness_2,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              title: const Text('Dark Mode'),
-              trailing: Radio<ThemeMode>(
-                value: ThemeMode.dark,
-                groupValue: widget.themeMode,
-                onChanged: (ThemeMode? value) {
-                  if (value != null) widget.onThemeChanged(value);
-                },
-                activeColor: Theme.of(context).colorScheme.primary,
-              ),
-              onTap: () => widget.onThemeChanged(ThemeMode.dark),
-            ),
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                'Preferences',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.attach_money,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              title: const Text('Default Currency'),
-              trailing: DropdownButton<String>(
-                value: _selectedCurrencySymbol, // Use state variable
-                underline: Container(), // Remove underline
-                items:
-                    _currencySymbols.entries.map((entry) {
-                      return DropdownMenuItem<String>(
-                        value: entry.value,
-                        child: Text('${entry.key} (${entry.value})'),
-                      );
-                    }).toList(),
-                onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      // Update local state for the dropdown
-                      _selectedCurrencySymbol = newValue;
-                    });
-                    widget.onDefaultCurrencyChanged(newValue); // Call callback
-                  }
-                },
-              ),
-            ),
-            const Divider(),
-            ListTile(
-              leading: Icon(
-                Icons.download_for_offline_outlined,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              title: const Text('Export Data (CSV)'),
-              subtitle: const Text('Share your expenses and subscriptions.'),
-              onTap: widget.onExportData,
-            ),
-            const Divider(),
-            ListTile(
-              leading: Icon(
-                Icons.upload_file_outlined,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              title: const Text('Import Data (CSV)'),
-              subtitle: const Text(
-                'Load expenses and subscriptions from a CSV file.',
-              ),
-              onTap: widget.onImportData,
-            ),
-            const Divider(),
-
-            // You can add more settings sections here
-            // Example:
-            // Padding(
-            //   padding: const EdgeInsets.symmetric(vertical: 8.0),
-            //   child: Text('Notifications', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Theme.of(context).colorScheme.primary)),
-            // ),
-            // SwitchListTile(
-            //   title: const Text('Enable Notifications'),
-            //   value: true, // Replace with actual state
-            //   onChanged: (bool value) {
-            //     // Handle change
-            //   },
-            //   secondary: Icon(Icons.notifications_active, color: Theme.of(context).colorScheme.secondary),
-            // ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                'Data Management',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ),
-            Card(
-              color: Theme.of(
-                context,
-              ).colorScheme.errorContainer.withOpacity(0.3),
-              elevation: 0, // Optional: remove card shadow for a flatter look
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.0),
-                side: BorderSide(
-                  color: Theme.of(context).colorScheme.error,
-                  width: 1,
-                ),
-              ),
-              child: ListTile(
-                leading: Icon(
-                  Icons.warning_amber_rounded,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                title: Text(
-                  'Clear All Data',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-                onTap: () => widget.onClearAllData(context),
-              ),
-            ),
-            const Divider(),
-            const SizedBox(height: 20), // Spacing before the button
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orangeAccent,
-              ),
-              onPressed: _signOut,
-              child: const Text('Sign Out'),
-            ),
-            const SizedBox(height: 20), // Spacing after the button
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/intl.dart'; // For date formatting
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import '../models/category.dart'; // Import Category model
 import '../models/entries.dart' as models;
 import 'currency_selector.dart';
 import 'expense_input.dart';
@@ -27,9 +29,6 @@ class BudgetHomePage extends StatefulWidget {
 }
 
 class _BudgetHomePageState extends State<BudgetHomePage> {
-  // late Box<models.ExpenseEntry> _expenseBox; // Not needed as direct member
-  // late Box<models.SubscriptionEntry> _subscriptionBox; // Not needed as direct member
-
   List<models.ExpenseEntry> _expenses = [];
   List<models.SubscriptionEntry> _subscriptions = [];
 
@@ -38,19 +37,29 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   String _searchQuery = '';
   List<String> _selectedFilterCategories = [];
   String _filterTransactionType = 'All'; // 'All', 'Expense', 'Subscription'
+  DateTime? _filterStartDate;
+  DateTime? _filterEndDate;
+  String _currentSortOrder = 'date_desc'; // Default sort order
 
-  // Get unique categories from expenses for filter options
+  final Map<String, String> _sortOptions = {
+    'date_desc': 'Date (Newest First)',
+    'date_asc': 'Date (Oldest First)',
+    'amount_desc': 'Amount (High to Low)',
+    'amount_asc': 'Amount (Low to High)',
+    'name_asc': 'Name/Category (A-Z)',
+    'name_desc': 'Name/Category (Z-A)',
+  };
+
+  Box<Category> _getCategoryBox() =>
+      Hive.box<Category>('categories_${widget.userId}');
+
   List<String> get _availableCategories {
     final categories =
-        _getExpenseBox().values
-            .map((e) => e.category ?? 'N/A')
-            .toSet()
-            .toList();
-    categories.sort();
+        _getCategoryBox().values.map((c) => c.name).toSet().toList();
+    categories.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return categories;
   }
 
-  // Helper methods to get user-specific boxes
   Box<models.ExpenseEntry> _getExpenseBox() =>
       Hive.box<models.ExpenseEntry>('expenses_${widget.userId}');
   Box<models.SubscriptionEntry> _getSubscriptionBox() =>
@@ -66,23 +75,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   @override
   void initState() {
     super.initState();
-    // Boxes are now opened in MyApp's initState.
-    // We just need to ensure they are ready before loading data.
     _selectedCurrency = widget.initialCurrencySymbol;
     _initializeAndLoadAllData();
   }
 
   Future<void> _initializeAndLoadAllData() async {
-    // Ensure boxes are open (this should be guaranteed by MyApp's _hiveBoxesOpened flag)
     if (!Hive.isBoxOpen('expenses_${widget.userId}') ||
         !Hive.isBoxOpen('subscriptions_${widget.userId}')) {
       print("BudgetHomePage: Waiting for Hive boxes to be opened by MyApp...");
-      // Optionally, wait a short duration and retry, or rely on MyApp to trigger a rebuild
-      // For now, we assume MyApp handles this and BudgetHomePage is built when boxes are ready.
       return;
     }
     await _fetchDataFromFirestoreAndPopulateHive();
-    _loadData(); // This will now load from the potentially updated Hive boxes
+    _loadData();
   }
 
   Future<void> _fetchDataFromFirestoreAndPopulateHive() async {
@@ -90,11 +94,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     final expenseBox = _getExpenseBox();
     final subscriptionBox = _getSubscriptionBox();
 
-    // Clear local boxes before populating from Firestore to avoid duplicates (simplistic sync)
     await expenseBox.clear();
     await subscriptionBox.clear();
 
-    // Fetch and populate expenses
     final expenseSnapshots =
         await FirebaseFirestore.instance
             .collection('users')
@@ -102,19 +104,17 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             .collection('expenses')
             .get();
     for (var doc in expenseSnapshots.docs) {
-      // When fetching, store the Firestore doc.id as firestoreId
       final data = doc.data();
       expenseBox.add(
         models.ExpenseEntry(
           amount: (data['amount'] as num).toDouble(),
           date: (data['date'] as Timestamp).toDate(),
           category: data['category'] as String?,
-          firestoreId: doc.id, // Store Firestore document ID
+          firestoreId: doc.id,
         ),
       );
     }
 
-    // Fetch and populate subscriptions
     final subscriptionSnapshots =
         await FirebaseFirestore.instance
             .collection('users')
@@ -128,7 +128,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           name: data['name'] as String,
           amount: (data['amount'] as num).toDouble(),
           date: (data['date'] as Timestamp).toDate(),
-          firestoreId: doc.id, // Store Firestore document ID
+          firestoreId: doc.id,
         ),
       );
     }
@@ -136,20 +136,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   void _loadData() {
-    // Ensure boxes are open before trying to access them
     if (!Hive.isBoxOpen('expenses_${widget.userId}') ||
         !Hive.isBoxOpen('subscriptions_${widget.userId}')) {
       print(
         "BudgetHomePage: _loadData called but boxes not open. User: ${widget.userId}",
       );
-      return; // Or show a loading state / handle error
+      return;
     }
     setState(() {
       Iterable<models.ExpenseEntry> filteredExpenses = _getExpenseBox().values;
       Iterable<models.SubscriptionEntry> filteredSubscriptions =
           _getSubscriptionBox().values;
 
-      // Apply search query
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         filteredExpenses = filteredExpenses.where((expense) {
@@ -162,7 +160,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         });
       }
 
-      // Apply category filter (only for expenses)
       if (_selectedFilterCategories.isNotEmpty) {
         filteredExpenses = filteredExpenses.where(
           (expense) =>
@@ -170,31 +167,100 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         );
       }
 
-      // Apply transaction type filter
+      if (_filterStartDate != null) {
+        filteredExpenses = filteredExpenses.where(
+          (expense) => !expense.date.isBefore(_filterStartDate!),
+        );
+        filteredSubscriptions = filteredSubscriptions.where(
+          (sub) => !sub.date.isBefore(_filterStartDate!),
+        );
+      }
+      if (_filterEndDate != null) {
+        final inclusiveEndDate = DateTime(
+          _filterEndDate!.year,
+          _filterEndDate!.month,
+          _filterEndDate!.day,
+          23,
+          59,
+          59,
+        );
+        filteredExpenses = filteredExpenses.where(
+          (expense) => !expense.date.isAfter(inclusiveEndDate),
+        );
+        filteredSubscriptions = filteredSubscriptions.where(
+          (sub) => !sub.date.isAfter(inclusiveEndDate),
+        );
+      }
+
       if (_filterTransactionType == 'Expense') {
         _expenses = filteredExpenses.toList();
-        _subscriptions =
-            []; // Show no subscriptions if filtering for expenses only
+        _subscriptions = [];
       } else if (_filterTransactionType == 'Subscription') {
-        _expenses = []; // Show no expenses
+        _expenses = [];
         _subscriptions = filteredSubscriptions.toList();
       } else {
-        // 'All'
         _expenses = filteredExpenses.toList();
         _subscriptions = filteredSubscriptions.toList();
       }
     });
+    _applySorting();
+  }
+
+  void _applySorting() {
+    setState(() {
+      _expenses.sort((a, b) {
+        switch (_currentSortOrder) {
+          case 'date_asc':
+            return a.date.compareTo(b.date);
+          case 'amount_desc':
+            return b.amount.compareTo(a.amount);
+          case 'amount_asc':
+            return a.amount.compareTo(b.amount);
+          case 'name_asc':
+            return (a.category ?? '').toLowerCase().compareTo(
+              (b.category ?? '').toLowerCase(),
+            );
+          case 'name_desc':
+            return (b.category ?? '').toLowerCase().compareTo(
+              (a.category ?? '').toLowerCase(),
+            );
+          case 'date_desc':
+          default:
+            return b.date.compareTo(a.date);
+        }
+      });
+
+      _subscriptions.sort((a, b) {
+        switch (_currentSortOrder) {
+          case 'date_asc':
+            return a.date.compareTo(b.date);
+          case 'amount_desc':
+            return b.amount.compareTo(a.amount);
+          case 'amount_asc':
+            return a.amount.compareTo(b.amount);
+          case 'name_asc':
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          case 'name_desc':
+            return b.name.toLowerCase().compareTo(a.name.toLowerCase());
+          case 'date_desc':
+          default:
+            return b.date.compareTo(a.date);
+        }
+      });
+    });
+  }
+
+  String _formatDateForDisplay(DateTime? date) {
+    if (date == null) return 'Select Date';
+    return DateFormat.yMd().format(date);
   }
 
   Future<void> _addExpense(double value, String category) async {
-    // Mark as async
     final newExpenseHive = models.ExpenseEntry(
       amount: value,
       date: DateTime.now(),
       category: category,
     );
-    // Add to Hive first to get an object reference for finding index later
-    // Make this async to await the key
     int hiveKey = await _getExpenseBox().add(newExpenseHive);
 
     FirebaseFirestore.instance
@@ -209,7 +275,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         .then((docRef) async {
           print("Expense added to Firestore with ID: ${docRef.id}");
           newExpenseHive.firestoreId = docRef.id;
-          // Update the Hive entry with the firestoreId using the key from add()
           await _getExpenseBox().put(hiveKey, newExpenseHive);
         })
         .catchError((error) {
@@ -219,13 +284,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   }
 
   Future<void> _addSubscription(String name, double value) async {
-    // Mark as async
     final newSubscriptionHive = models.SubscriptionEntry(
       name: name,
       amount: value,
       date: DateTime.now(),
     );
-    // Add to Hive first and get its key
     int hiveKey = await _getSubscriptionBox().add(newSubscriptionHive);
 
     FirebaseFirestore.instance
@@ -240,7 +303,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         .then((docRef) async {
           print("Subscription added to Firestore with ID: ${docRef.id}");
           newSubscriptionHive.firestoreId = docRef.id;
-          // Update the Hive entry with the firestoreId using the key from add()
           await _getSubscriptionBox().put(hiveKey, newSubscriptionHive);
         })
         .catchError((error) {
@@ -253,8 +315,8 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     required String title,
     required double currentAmount,
     required void Function(double) onSave,
-    String? currentName, // Optional for subscriptions
-    void Function(String)? onNameSave, // Optional for subscriptions
+    String? currentName,
+    void Function(String)? onNameSave,
   }) async {
     final TextEditingController amountController = TextEditingController(
       text: currentAmount.toString(),
@@ -323,7 +385,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       currentAmount: entry.amount,
       onSave: (newAmount) async {
         entry.amount = newAmount;
-        await entry.save(); // Hive save
+        await entry.save();
 
         if (entry.firestoreId != null) {
           FirebaseFirestore.instance
@@ -347,16 +409,13 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     _showEditAmountDialog(
       title: 'Subscription',
       currentAmount: entry.amount,
-      currentName: entry.name, // Pass current name
+      currentName: entry.name,
       onSave: (newAmount) async {
         entry.amount = newAmount;
-        // Name is handled by onNameSave
-        // await entry.save(); // Hive save will be called after name save
       },
       onNameSave: (newName) async {
-        // Handle name change
         entry.name = newName;
-        await entry.save(); // Save both amount and name changes to Hive
+        await entry.save();
 
         if (entry.firestoreId != null) {
           FirebaseFirestore.instance
@@ -364,10 +423,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               .doc(widget.userId)
               .collection('subscriptions')
               .doc(entry.firestoreId)
-              .update({
-                'amount': entry.amount, // Use the (potentially) updated amount
-                'name': newName,
-              })
+              .update({'amount': entry.amount, 'name': newName})
               .catchError((error) {
                 print("Failed to update subscription in Firestore: $error");
               });
@@ -381,7 +437,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     final entry = _getExpenseBox().getAt(index);
     if (entry == null) return;
 
-    _getExpenseBox().deleteAt(index); // Delete from Hive
+    _getExpenseBox().deleteAt(index);
 
     if (entry.firestoreId != null) {
       FirebaseFirestore.instance
@@ -402,7 +458,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     final entry = _getSubscriptionBox().getAt(index);
     if (entry == null) return;
 
-    _getSubscriptionBox().deleteAt(index); // Delete from Hive
+    _getSubscriptionBox().deleteAt(index);
 
     if (entry.firestoreId != null) {
       FirebaseFirestore.instance
@@ -428,22 +484,56 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Set Monthly Budget Limit'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15.0),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Set Monthly Budget',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
           content: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Budget Limit',
-              border: OutlineInputBorder(),
+              hintText: 'Enter amount',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              prefixText: '$_selectedCurrency ', // Show current currency symbol
             ),
+            autofocus: true,
           ),
+          contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
+          actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.color?.withOpacity(0.7),
+              ),
               onPressed: () => Navigator.of(context).pop(),
             ),
             ElevatedButton(
               child: const Text('Save'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
               onPressed: () {
                 final limit = double.tryParse(controller.text);
                 if (limit != null && limit > 0) {
@@ -469,21 +559,30 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   Future<void> _showFilterDialog() async {
     List<String> tempSelectedCategories = List.from(_selectedFilterCategories);
     String tempTransactionType = _filterTransactionType;
+    DateTime? tempStartDate = _filterStartDate;
+    DateTime? tempEndDate = _filterEndDate;
+    String tempSortOrder = _currentSortOrder;
 
     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
-          // Use StatefulBuilder for dialog's own state
           builder: (context, setDialogState) {
             return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15.0),
+              ),
               title: const Text('Filter Transactions'),
+              titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 10.0),
               content: SingleChildScrollView(
                 child: ListBody(
                   children: <Widget>[
-                    const Text(
-                      'Transaction Type:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Text(
+                        'Transaction Type',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                     ),
                     RadioListTile<String>(
                       title: const Text('All'),
@@ -493,6 +592,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                           (value) => setDialogState(
                             () => tempTransactionType = value!,
                           ),
+                      contentPadding: EdgeInsets.zero,
                     ),
                     RadioListTile<String>(
                       title: const Text('Expenses'),
@@ -502,6 +602,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                           (value) => setDialogState(
                             () => tempTransactionType = value!,
                           ),
+                      contentPadding: EdgeInsets.zero,
                     ),
                     RadioListTile<String>(
                       title: const Text('Subscriptions'),
@@ -511,39 +612,178 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                           (value) => setDialogState(
                             () => tempTransactionType = value!,
                           ),
+                      contentPadding: EdgeInsets.zero,
                     ),
                     const Divider(),
-                    const Text(
-                      'Categories (Expenses):',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ExpansionTile(
+                      title: Text(
+                        'Categories (Expenses)',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                      ),
+                      initiallyExpanded: tempSelectedCategories.isNotEmpty,
+                      children:
+                          _availableCategories.isEmpty
+                              ? [
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                                  child: Text('No categories available.'),
+                                ),
+                              ]
+                              : _availableCategories.map((category) {
+                                return CheckboxListTile(
+                                  title: Text(category),
+                                  value: tempSelectedCategories.contains(
+                                    category,
+                                  ),
+                                  onChanged: (bool? selected) {
+                                    setDialogState(() {
+                                      if (selected == true) {
+                                        tempSelectedCategories.add(category);
+                                      } else {
+                                        tempSelectedCategories.remove(category);
+                                      }
+                                    });
+                                  },
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                );
+                              }).toList(),
                     ),
-                    if (_availableCategories.isEmpty)
-                      const Text('No categories available to filter.'),
-                    ..._availableCategories.map((category) {
-                      return CheckboxListTile(
-                        title: Text(category),
-                        value: tempSelectedCategories.contains(category),
-                        onChanged: (bool? selected) {
-                          setDialogState(() {
-                            if (selected == true) {
-                              tempSelectedCategories.add(category);
-                            } else {
-                              tempSelectedCategories.remove(category);
-                            }
-                          });
-                        },
-                      );
-                    }),
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                      child: Text(
+                        'Date Range',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12.0,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8.0),
+                                side: BorderSide(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                            ),
+                            child: Text(_formatDateForDisplay(tempStartDate)),
+                            onPressed: () async {
+                              final DateTime? picked = await showDatePicker(
+                                context: context,
+                                initialDate: tempStartDate ?? DateTime.now(),
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2101),
+                              );
+                              if (picked != null && picked != tempStartDate) {
+                                setDialogState(() => tempStartDate = picked);
+                              }
+                            },
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text("to"),
+                        ),
+                        Expanded(
+                          child: TextButton(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12.0,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8.0),
+                                side: BorderSide(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                            ),
+                            child: Text(_formatDateForDisplay(tempEndDate)),
+                            onPressed: () async {
+                              final DateTime? picked = await showDatePicker(
+                                context: context,
+                                initialDate: tempEndDate ?? DateTime.now(),
+                                firstDate: tempStartDate ?? DateTime(2000),
+                                lastDate: DateTime(2101),
+                              );
+                              if (picked != null && picked != tempEndDate) {
+                                setDialogState(() => tempEndDate = picked);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        child: const Text("Clear Date Range"),
+                        onPressed:
+                            () => setDialogState(() {
+                              tempStartDate = null;
+                              tempEndDate = null;
+                            }),
+                      ),
+                    ),
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                      child: Text(
+                        'Sort By',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: tempSortOrder,
+                      items:
+                          _sortOptions.entries.map((entry) {
+                            return DropdownMenuItem<String>(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            );
+                          }).toList(),
+                      onChanged: (String? newValue) {
+                        if (newValue != null) {
+                          setDialogState(() => tempSortOrder = newValue);
+                        }
+                      },
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
               actions: <Widget>[
                 TextButton(
                   child: const Text('Clear Filters'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
                   onPressed: () {
                     setState(() {
                       _selectedFilterCategories = [];
                       _filterTransactionType = 'All';
+                      _filterStartDate = null;
+                      _filterEndDate = null;
+                      _currentSortOrder = 'date_desc';
                       _loadData();
                     });
                     Navigator.of(dialogContext).pop();
@@ -551,14 +791,26 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                 ),
                 TextButton(
                   child: const Text('Cancel'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(
+                      context,
+                    ).textTheme.bodyLarge?.color?.withOpacity(0.7),
+                  ),
                   onPressed: () => Navigator.of(dialogContext).pop(),
                 ),
                 ElevatedButton(
                   child: const Text('Apply'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  ),
                   onPressed: () {
                     setState(() {
                       _selectedFilterCategories = tempSelectedCategories;
                       _filterTransactionType = tempTransactionType;
+                      _filterStartDate = tempStartDate;
+                      _filterEndDate = tempEndDate;
+                      _currentSortOrder = tempSortOrder;
                       _loadData();
                     });
                     Navigator.of(dialogContext).pop();
@@ -590,7 +842,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background image
           Image.asset(
             'assets/images/hellokittyx.png',
             fit: BoxFit.cover,
@@ -610,13 +861,13 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     Text(
                       widget.title,
                       style: const TextStyle(
-                        fontSize: 30,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: Colors.pink,
+                        color: Colors.pinkAccent,
                         fontFamily: 'Comic Sans MS',
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -629,20 +880,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                                 borderRadius: BorderRadius.circular(12.0),
                               ),
                               filled: true,
-                              fillColor: Theme.of(
-                                context,
-                              ).cardColor.withOpacity(0.8),
+                              fillColor: Colors.white.withOpacity(0.85),
                             ),
                             onChanged: (value) {
                               _searchQuery = value;
-                              _loadData(); // Re-filter and update lists
+                              _loadData();
                             },
                           ),
                         ),
                         IconButton(
                           icon: Icon(
                             Icons.filter_list,
-                            color: Theme.of(context).colorScheme.primary,
+                            color: Colors.pinkAccent,
                           ),
                           tooltip: 'Filter Transactions',
                           onPressed: _showFilterDialog,
@@ -670,15 +919,14 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                           ),
-                          child: FittedBox(
-                            // Allow text to scale down
+                          child: const FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: const Text(
-                              'Set Budget', // Use the shorter text
+                            child: Text(
+                              'Set Budget',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.white,
-                              ), // Ensure text color is set
+                              ),
                             ),
                           ),
                         ),
@@ -686,17 +934,28 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     ),
                     const SizedBox(height: 20),
                     Card(
-                      elevation: 2,
+                      elevation: 3,
                       margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                      ),
+                      color: Colors.white.withOpacity(0.9),
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
-                        child: ExpenseInput(onAddExpense: _addExpense),
+                        child: ExpenseInput(
+                          onAddExpense: _addExpense,
+                          userId: widget.userId,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     Card(
-                      elevation: 2,
+                      elevation: 3,
                       margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                      ),
+                      color: Colors.white.withOpacity(0.9),
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
                         child: SubscriptionInput(
@@ -706,10 +965,17 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     ),
                     const SizedBox(height: 20),
                     Card(
-                      elevation: 2,
+                      elevation: 3,
                       margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                      ),
+                      color: Colors.white.withOpacity(0.9),
                       child: Padding(
-                        padding: const EdgeInsets.all(12.0),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12.0,
+                          horizontal: 8.0,
+                        ),
                         child: ExpenseList(
                           expenses: _expenses,
                           currency: _selectedCurrency,
@@ -721,9 +987,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
-                      margin: const EdgeInsets.symmetric(
-                        vertical: 12.0,
-                      ), // Added margin
+                      margin: const EdgeInsets.symmetric(vertical: 12.0),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 8,
@@ -737,9 +1001,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       ),
                       child: Center(
                         child: Column(
-                          mainAxisSize:
-                              MainAxisSize
-                                  .min, // So column doesn't take full height
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               'Total Spending: $_selectedCurrency${totalBudget.toStringAsFixed(2)}',
@@ -775,7 +1037,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     const SizedBox(height: 20),
                     MonthlySummary(
                       expenses: _expenses,
-                      // subscriptions: _subscriptions, // Removed as MonthlySummary no longer accepts it
                       currency: _selectedCurrency,
                     ),
                     const SizedBox(height: 20),
