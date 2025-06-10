@@ -28,6 +28,9 @@ class SavingGoal extends HiveObject {
   @HiveField(6)
   DateTime createdAt;
 
+  @HiveField(7) // New field
+  bool? notificationSentForCompletion; // Make nullable
+
   SavingGoal({
     required this.id,
     required this.name,
@@ -36,6 +39,7 @@ class SavingGoal extends HiveObject {
     this.targetDate,
     required this.userId,
     required this.createdAt,
+    this.notificationSentForCompletion, // Default will be null, handled as false
   });
 
   // Factory constructor to create a SavingGoal from a Firestore document
@@ -54,6 +58,8 @@ class SavingGoal extends HiveObject {
       targetDate: (data['targetDate'] as Timestamp?)?.toDate(),
       userId: data['userId'] as String? ?? '',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      notificationSentForCompletion:
+          data['notificationSentForCompletion'] as bool? ?? false,
     );
   }
 
@@ -66,6 +72,8 @@ class SavingGoal extends HiveObject {
       'targetDate': targetDate != null ? Timestamp.fromDate(targetDate!) : null,
       'userId': userId,
       'createdAt': Timestamp.fromDate(createdAt),
+      'notificationSentForCompletion':
+          notificationSentForCompletion ?? false, // Save false if null
     };
   }
 

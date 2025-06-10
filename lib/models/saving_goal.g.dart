@@ -24,13 +24,14 @@ class SavingGoalAdapter extends TypeAdapter<SavingGoal> {
       targetDate: fields[4] as DateTime?,
       userId: fields[5] as String,
       createdAt: fields[6] as DateTime,
+      notificationSentForCompletion: fields[7] as bool?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SavingGoal obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class SavingGoalAdapter extends TypeAdapter<SavingGoal> {
       ..writeByte(5)
       ..write(obj.userId)
       ..writeByte(6)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(7)
+      ..write(obj.notificationSentForCompletion);
   }
 
   @override

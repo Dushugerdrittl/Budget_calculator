@@ -69,19 +69,30 @@ class NotificationService {
     required String title,
     required String body,
     String? payload,
+    String channelId = 'your_channel_id', // Default channel
+    String channelName = 'Your Channel Name', // Default channel name
+    String channelDescription =
+        'Your channel description', // Default channel description
+    Importance importance = Importance.max, // Default importance
+    Priority priority = Priority.high, // Default priority
   }) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-          'your_channel_id', // id
-          'Your Channel Name', // name
-          channelDescription: 'Your channel description', // description
-          importance: Importance.max,
-          priority: Priority.high,
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
+          importance: importance,
+          priority: priority,
           showWhen: false,
         );
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
-    );
+      iOS: const DarwinNotificationDetails(
+        presentSound: true,
+        presentAlert: true,
+        presentBadge: true,
+      ),
+    ); // Added iOS details for consistency
     await flutterLocalNotificationsPlugin.show(
       id,
       title,

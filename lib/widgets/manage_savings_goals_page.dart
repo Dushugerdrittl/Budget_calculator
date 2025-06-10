@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/saving_goal.dart';
+import '../services/notification_service.dart'; // Import NotificationService
 
 class ManageSavingsGoalsPage extends StatefulWidget {
   final String userId;
@@ -428,6 +430,8 @@ class _ManageSavingsGoalsPageState extends State<ManageSavingsGoalsPage> {
                     targetDate: goal.targetDate,
                     userId: goal.userId,
                     createdAt: goal.createdAt,
+                    notificationSentForCompletion:
+                        goal.notificationSentForCompletion, // Preserve existing status
                   );
                   try {
                     await _firestore
@@ -435,8 +439,40 @@ class _ManageSavingsGoalsPageState extends State<ManageSavingsGoalsPage> {
                         .doc(widget.userId)
                         .collection('savings_goals')
                         .doc(updatedGoal.id)
-                        .update({'currentAmount': updatedGoal.currentAmount});
+                        .update({
+                          'currentAmount': updatedGoal.currentAmount,
+                          // No change to notificationSentForCompletion here, only when goal is met
+                        });
                     await _goalBox.put(updatedGoal.id, updatedGoal);
+
+                    // Check if goal is reached and notification not yet sent
+                    if (updatedGoal.currentAmount >= updatedGoal.targetAmount &&
+                        !(updatedGoal.notificationSentForCompletion ?? false)) {
+                      NotificationService().showSimpleNotification(
+                        id:
+                            updatedGoal.id.hashCode +
+                            3000000, // Unique ID range for goal completion
+                        title: '🎉 Goal Achieved: ${updatedGoal.name}! 🎉',
+                        body:
+                            'Congratulations! You\'ve reached your savings goal of \$${updatedGoal.targetAmount.toStringAsFixed(2)} for "${updatedGoal.name}".',
+                        channelId: 'goal_achievement_channel',
+                        channelName: 'Goal Achievements',
+                        channelDescription:
+                            'Notifications for when savings goals are met.',
+                        importance: Importance.high,
+                      );
+                      updatedGoal.notificationSentForCompletion = true;
+                      await _firestore
+                          .collection('users')
+                          .doc(widget.userId)
+                          .collection('savings_goals')
+                          .doc(updatedGoal.id)
+                          .update({'notificationSentForCompletion': true});
+                      await _goalBox.put(
+                        updatedGoal.id,
+                        updatedGoal,
+                      ); // Save again with updated flag
+                    }
                     if (mounted) {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(
                         const SnackBar(content: Text('Funds added!')),

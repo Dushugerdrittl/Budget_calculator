@@ -1,5 +1,6 @@
 import 'package:expance/widgets/subscription_list.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart'; // For date formatting
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
@@ -44,6 +45,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   DateTime? _filterStartDate;
   DateTime? _filterEndDate;
   String _currentSortOrder = 'date_desc'; // Default sort order
+
+  // State for tracking monthly budget notifications
+  String _currentMonthForNotificationTracking = "";
+  Map<String, String> _categoryNotificationStatusForMonth =
+      {}; // Key: category.id, Value: 'warning' or 'alert'
 
   final Map<String, String> _sortOptions = {
     'date_desc': 'Date (Newest First)',
@@ -890,6 +896,17 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     }
 
     final now = DateTime.now();
+    final String monthYearKey = "${now.year}-${now.month}";
+
+    // Reset notification status if the month has changed
+    if (_currentMonthForNotificationTracking != monthYearKey) {
+      _currentMonthForNotificationTracking = monthYearKey;
+      _categoryNotificationStatusForMonth.clear();
+      print(
+        "[BudgetCheck] New month ($monthYearKey) detected, resetting category notification statuses.",
+      );
+    }
+
     final currentMonthExpenses =
         _getExpenseBox().values
             .where(
@@ -938,6 +955,11 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             title: 'Budget Exceeded: ${category.name}',
             body:
                 'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
+            channelId: 'budget_alerts_exceeded',
+            channelName: 'Budget Exceeded Alerts',
+            channelDescription:
+                'Notifications for when a category budget is exceeded.',
+            importance: Importance.high, // Ensure it's prominent
           );
         } else if (percentageSpent >= 80) {
           // print("WARNING: Budget APPROACHING for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%)");
@@ -946,6 +968,13 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
             title: 'Budget Warning: ${category.name}',
             body:
                 'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%) of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
+            channelId: 'budget_warnings',
+            channelName: 'Budget Warnings',
+            channelDescription:
+                'Notifications for when a category budget is approaching its limit.',
+            importance:
+                Importance
+                    .defaultImportance, // Slightly less prominent than exceeded
           );
         }
       }

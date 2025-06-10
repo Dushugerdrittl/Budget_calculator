@@ -22,6 +22,7 @@ import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'firebase_options.dart'; // Import the generated Firebase options
 import 'login_screen.dart'; // Import the LoginScreen - THIS LINE IS ALREADY PRESENT, NO CHANGE NEEDED
+import 'package:animations/animations.dart'; // Import the animations package
 import 'services/notification_service.dart'; // Import NotificationService
 
 const String _themeModePrefsKey =
@@ -98,16 +99,34 @@ class _AppRootState extends State<AppRoot> {
       title: 'Hello Kitty Budget App', // You can keep a consistent title
       themeMode: _currentThemeMode, // Use state variable for themeMode
       theme: ThemeData(
+        fontFamily: 'Comic Sans MS', // Applying a playful font globally
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.pinkAccent,
+          seedColor: const Color(
+            0xFFF8BBD0,
+          ), // A light, soft pink (Material Pink 100)
           brightness: Brightness.light,
+          primary: const Color(
+            0xFFE91E63,
+          ), // A more vibrant pink for primary elements
+          secondary: const Color(
+            0xFFF06292,
+          ), // A complementary pink for secondary elements
         ),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
+        fontFamily: 'Comic Sans MS', // Applying a playful font globally
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.pinkAccent,
+          seedColor: const Color(
+            0xFFF8BBD0,
+          ), // Same seed for dark theme consistency
           brightness: Brightness.dark,
+          primary: const Color(
+            0xFFF48FB1,
+          ), // Lighter pink for primary in dark mode
+          secondary: const Color(
+            0xFFF8BBD0,
+          ), // Even lighter for secondary in dark mode
         ),
         useMaterial3: true,
       ),
@@ -166,6 +185,7 @@ class _MyAppState extends State<MyApp> {
   // it will be updated by _loadInitialSettings.
   String _currentDefaultCurrency = '\$';
   // We will open user-specific boxes later in initState
+  late List<Widget> _pages; // For IndexedStack
 
   bool _hiveBoxesOpened = false; // To track if boxes are opened
 
@@ -174,6 +194,7 @@ class _MyAppState extends State<MyApp> {
     super.initState();
     print("[MyApp] initState called for user: ${widget.currentUser.uid}");
     _initializeAsyncData();
+    _pages = _generatePageList(); // Initialize pages here
   }
 
   void _loadInitialSettings() {
@@ -193,6 +214,8 @@ class _MyAppState extends State<MyApp> {
     if (mounted) {
       setState(() {
         _hiveBoxesOpened = true; // Mark boxes as opened
+        // Re-generate pages if their dependencies might have changed after async init
+        _pages = _generatePageList();
       });
     }
   }
@@ -209,6 +232,8 @@ class _MyAppState extends State<MyApp> {
     // Trigger a rebuild of BudgetHomePage if necessary, e.g., by updating its key
     // or ensuring BudgetHomePage re-reads from the new boxes.
     _budgetHomePageKey = UniqueKey();
+    // Update the _pages list as the key for BudgetHomePage has changed
+    if (mounted) setState(() => _pages = _generatePageList());
     _scheduleSubscriptionReminders(); // Add this call
   }
 
@@ -219,6 +244,8 @@ class _MyAppState extends State<MyApp> {
       _currentDefaultCurrency = currencySymbol;
       _budgetHomePageKey =
           UniqueKey(); // Refresh budget page to reflect new default
+      // Update the _pages list as the currency for BudgetHomePage and SettingsPage has changed
+      _pages = _generatePageList();
     });
   }
 
@@ -360,6 +387,8 @@ class _MyAppState extends State<MyApp> {
         setState(() {
           // Ensure UI rebuilds to reflect cleared data
           _budgetHomePageKey = UniqueKey();
+          // Update the _pages list as the key for BudgetHomePage has changed
+          _pages = _generatePageList();
         });
       }
     }
@@ -493,6 +522,8 @@ class _MyAppState extends State<MyApp> {
         // Refresh BudgetHomePage by changing its key
         setState(() {
           _budgetHomePageKey = UniqueKey();
+          // Update the _pages list as the key for BudgetHomePage has changed
+          _pages = _generatePageList();
         });
         if (contextForFeedback.mounted) {
           ScaffoldMessenger.of(contextForFeedback).showSnackBar(
@@ -522,7 +553,8 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  List<Widget> _buildPages() {
+  // Helper method to generate the list of pages
+  List<Widget> _generatePageList() {
     return <Widget>[
       BudgetHomePage(
         key: _budgetHomePageKey, // Assign the key here
@@ -569,7 +601,11 @@ class _MyAppState extends State<MyApp> {
 
     // MyApp now returns the Scaffold directly, to be used as the 'home' of AppRoot's MaterialApp
     return Scaffold(
-      body: _buildPages()[_selectedIndex],
+      body: IndexedStack(
+        // Use IndexedStack to preserve page states
+        index: _selectedIndex,
+        children: _pages, // Use the _pages list
+      ),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.calculate), label: 'Budget'),
@@ -579,9 +615,11 @@ class _MyAppState extends State<MyApp> {
           ),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.pinkAccent,
-        unselectedItemColor:
-            Colors.pink.shade200, // Softer color for unselected items
+        selectedItemColor:
+            Theme.of(context).colorScheme.primary, // Use theme color
+        unselectedItemColor: Theme.of(
+          context,
+        ).colorScheme.onSurface.withOpacity(0.6), // Softer color for unselected
         onTap: _onItemTapped,
       ),
     );
