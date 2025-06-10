@@ -636,10 +636,34 @@ class _MyAppState extends State<MyApp> {
         children: _pages, // Use the _pages list
       ),
       bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.calculate), label: 'Budget'),
+        items: <BottomNavigationBarItem>[
+          // Removed 'const' here
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
+            // Removed 'const' here
+            icon: Image.asset(
+              'assets/images/kitty_budget_icon.jpg',
+              width: 24, // Standard icon size
+              height: 24,
+            ),
+            activeIcon: Image.asset(
+              'assets/images/kitty_budget_icon.jpg',
+              width: 24, // Ensure active icon also has a size
+              height: 24,
+            ),
+            label: 'Budget',
+          ),
+          BottomNavigationBarItem(
+            // Removed 'const' here
+            icon: Image.asset(
+              'assets/images/kitty_settings_icon.jpg', // Corrected: Pass the string path directly
+              width: 24, // Standard icon size
+              height: 24,
+            ),
+            activeIcon: Image.asset(
+              'assets/images/kitty_settings_icon.jpg', // Corrected: Pass the string path directly
+              width: 24, // Ensure active icon also has a size
+              height: 24,
+            ),
             label: 'Settings',
           ),
         ],

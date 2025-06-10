@@ -80,6 +80,8 @@ flutter:
     - assets/images/wellcome.jpg 
     - assets/images/kitty_reg_bg.jpg
     - assets/images/hellotwo.jpg # Add your new icon here
+    - assets/images/kitty_budget_icon.jpg # New budget icon
+    - assets/images/kitty_settings_icon.jpg # New settings icon
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
   # For details regarding adding assets from package dependencies, see

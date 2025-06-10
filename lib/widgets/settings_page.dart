@@ -43,6 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void initState() {
+    // _fetchUserDetails(); // Call this if you need to fetch more details async
     super.initState();
     _selectedCurrencySymbol = widget.defaultCurrencySymbol;
   }
@@ -66,8 +67,106 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _showEditDisplayNameDialog(User currentUser) async {
+    final TextEditingController displayNameController = TextEditingController(
+      text: currentUser.displayName,
+    );
+    final formKey = GlobalKey<FormState>();
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Edit Display Name'),
+          content: Form(
+            key: formKey,
+            child: TextFormField(
+              controller: displayNameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'New Display Name'),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Display name cannot be empty';
+                }
+                return null;
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.of(
+                    dialogContext,
+                  ).pop(displayNameController.text.trim());
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (newName != null && newName.isNotEmpty) {
+      try {
+        await currentUser.updateDisplayName(newName);
+        setState(() {}); // Rebuild to show the new display name
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Display name updated!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating display name: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _sendPasswordResetEmail() async {
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user != null && user.email != null) {
+      try {
+        await FirebaseAuth.instance.sendPasswordResetEmail(email: user.email!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Password reset email sent to ${user.email}.'),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error sending reset email: $e')),
+          );
+        }
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not send reset email. User or email not found.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -91,6 +190,58 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(16.0),
               child: ListView(
                 children: <Widget>[
+                  // User Profile Section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      'User Profile',
+                      style: TextStyle(
+                        fontSize:
+                            Theme.of(context).textTheme.titleLarge?.fontSize,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.0),
+                    ),
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.account_circle,
+                        color: Theme.of(context).colorScheme.secondary,
+                        size: 40,
+                      ),
+                      title: Text(
+                        currentUser?.displayName ?? 'User',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        'Email: ${currentUser?.email ?? 'N/A'}\nUID: ${currentUser?.uid ?? 'N/A'}',
+                        style: TextStyle(
+                          color: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.color?.withOpacity(0.7),
+                          height: 1.4, // Adjust line spacing if needed
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(
+                          Icons.edit_outlined,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        onPressed:
+                            currentUser != null
+                                ? () => _showEditDisplayNameDialog(currentUser)
+                                : null,
+                        tooltip: 'Edit Display Name',
+                      ),
+                      isThreeLine: true, // Allows for more space in subtitle
+                    ),
+                  ),
+                  const Divider(height: 30),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Text(
@@ -105,6 +256,26 @@ class _SettingsPageState extends State<SettingsPage> {
                             ).colorScheme.primary, // Adapts to theme
                       ),
                     ),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.lock_reset_outlined,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(
+                      'Reset Password',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Send a password reset link to your email.',
+                      style: TextStyle(
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                    ),
+                    onTap: _sendPasswordResetEmail,
                   ),
                   const Divider(),
                   ListTile(
