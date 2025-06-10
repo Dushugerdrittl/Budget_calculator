@@ -1,3 +1,4 @@
+import 'package:expance/widgets/spending_over_time_graph.dart'; // Import the new bar graph widget
 import 'package:expance/widgets/subscription_list.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -11,7 +12,7 @@ import 'expense_input.dart';
 import 'subscription_input.dart';
 import 'expense_list.dart';
 import 'monthly_summary.dart';
-import 'budget_graph.dart';
+import 'budget_graph.dart'; // This is now the Pie Chart
 import 'yearly_summary.dart';
 import '../services/notification_service.dart'; // Import NotificationService
 
@@ -46,8 +47,16 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   DateTime? _filterEndDate;
   String _currentSortOrder = 'date_desc'; // Default sort order
 
-  DateTime? _graphStartDate; // Date range for the graph
-  DateTime? _graphEndDate; // Date range for the graph
+  DateTime? _graphStartDate; // Date range for the Pie Chart
+  DateTime? _graphEndDate; // Date range for the Pie Chart
+
+  String _barGraphPeriod = 'monthly'; // 'daily', 'weekly', 'monthly', 'yearly'
+  final List<String> _barGraphPeriods = [
+    'daily',
+    'weekly',
+    'monthly',
+    'yearly',
+  ];
 
   // State for tracking monthly budget notifications
   String _currentMonthForNotificationTracking = "";
@@ -410,23 +419,22 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     );
   }
 
-  void _editExpense(int index) {
-    final entry = _getExpenseBox().getAt(index);
-    if (entry == null) return;
+  void _editExpense(models.ExpenseEntry expenseToEdit) {
+    // expenseToEdit is the actual Hive object from the list
     _showEditAmountDialog(
       title: 'Expense',
-      currentAmount: entry.amount,
+      currentAmount: expenseToEdit.amount,
       onSave: (newAmount) async {
-        entry.amount = newAmount;
-        await entry.save();
+        expenseToEdit.amount = newAmount;
+        await expenseToEdit.save(); // Save the Hive object
 
-        if (entry.firestoreId != null) {
+        if (expenseToEdit.firestoreId != null) {
           FirebaseFirestore.instance
               .collection('users')
               .doc(widget.userId)
               .collection('expenses')
-              .doc(entry.firestoreId)
-              .update({'amount': newAmount})
+              .doc(expenseToEdit.firestoreId)
+              .update({'amount': newAmount}) // Use entry for firestoreId
               .catchError((error) {
                 print("Failed to update expense in Firestore: $error");
               });
@@ -436,27 +444,29 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     );
   }
 
-  void _editSubscription(int index) {
-    final entry = _getSubscriptionBox().getAt(index);
-    if (entry == null) return;
+  void _editSubscription(models.SubscriptionEntry subscriptionToEdit) {
+    // subscriptionToEdit is the actual Hive object
     _showEditAmountDialog(
       title: 'Subscription',
-      currentAmount: entry.amount,
-      currentName: entry.name,
+      currentAmount: subscriptionToEdit.amount,
+      currentName: subscriptionToEdit.name,
       onSave: (newAmount) async {
-        entry.amount = newAmount;
+        subscriptionToEdit.amount = newAmount;
       },
       onNameSave: (newName) async {
-        entry.name = newName;
-        await entry.save();
+        subscriptionToEdit.name = newName;
+        await subscriptionToEdit.save(); // Save the Hive object
 
-        if (entry.firestoreId != null) {
+        if (subscriptionToEdit.firestoreId != null) {
           FirebaseFirestore.instance
               .collection('users')
               .doc(widget.userId)
               .collection('subscriptions')
-              .doc(entry.firestoreId)
-              .update({'amount': entry.amount, 'name': newName})
+              .doc(subscriptionToEdit.firestoreId)
+              .update({
+                'amount': subscriptionToEdit.amount,
+                'name': newName,
+              }) // Use subscriptionToEdit
               .catchError((error) {
                 print("Failed to update subscription in Firestore: $error");
               });
@@ -466,19 +476,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     );
   }
 
-  void _deleteExpense(int index) {
-    final entry = _getExpenseBox().getAt(index);
-    if (entry == null) return;
+  void _deleteExpense(models.ExpenseEntry expenseToDelete) {
+    // expenseToDelete is the actual Hive object
+    final String? firestoreId =
+        expenseToDelete.firestoreId; // Store before deleting
+    expenseToDelete.delete(); // Delete from Hive
 
-    _getExpenseBox().deleteAt(index);
-
-    if (entry.firestoreId != null) {
+    if (firestoreId != null) {
       FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .collection('expenses')
-          .doc(entry.firestoreId)
-          .delete()
+          .doc(firestoreId)
+          .delete() // Use firestoreId
           .then((_) => print("Expense deleted from Firestore"))
           .catchError(
             (error) => print("Failed to delete expense from Firestore: $error"),
@@ -487,23 +497,27 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     _loadData();
   }
 
-  Future<void> _markSubscriptionAsPaid(int index) async {
-    final entry = _getSubscriptionBox().getAt(index);
-    if (entry == null) return;
+  Future<void> _markSubscriptionAsPaid(
+    models.SubscriptionEntry subscriptionToMark,
+  ) async {
+    // subscriptionToMark is the actual Hive object
+    subscriptionToMark.advanceNextDueDate();
+    await subscriptionToMark.save(); // Save to Hive
 
-    entry.advanceNextDueDate();
-    await entry.save();
-
-    if (entry.firestoreId != null) {
+    if (subscriptionToMark.firestoreId != null) {
       try {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(widget.userId)
             .collection('subscriptions')
-            .doc(entry.firestoreId)
+            .doc(subscriptionToMark.firestoreId)
             .update({
-              'nextDueDate': Timestamp.fromDate(entry.nextDueDate!),
-              'reminderScheduled': entry.reminderScheduled ?? false,
+              // Use subscriptionToMark
+              'nextDueDate': Timestamp.fromDate(
+                subscriptionToMark.nextDueDate!,
+              ),
+              'reminderScheduled':
+                  subscriptionToMark.reminderScheduled ?? false,
             });
         await widget.scheduleRemindersCallback();
       } catch (e) {
@@ -515,19 +529,19 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     _loadData();
   }
 
-  void _deleteSubscription(int index) {
-    final entry = _getSubscriptionBox().getAt(index);
-    if (entry == null) return;
+  void _deleteSubscription(models.SubscriptionEntry subscriptionToDelete) {
+    // subscriptionToDelete is the actual Hive object
+    final String? firestoreId =
+        subscriptionToDelete.firestoreId; // Store before deleting
+    subscriptionToDelete.delete(); // Delete from Hive
 
-    _getSubscriptionBox().deleteAt(index);
-
-    if (entry.firestoreId != null) {
+    if (firestoreId != null) {
       FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
           .collection('subscriptions')
-          .doc(entry.firestoreId)
-          .delete()
+          .doc(firestoreId)
+          .delete() // Use firestoreId
           .then((_) => print("Subscription deleted from Firestore"))
           .catchError(
             (error) =>
@@ -617,6 +631,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     });
   }
 
+  // This method is for the Pie Chart date range
   Future<void> _selectGraphDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -985,34 +1000,53 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
         final int warningNotificationId = 1000000 + category.id.hashCode.abs();
         final int alertNotificationId = 2000000 + category.id.hashCode.abs();
 
+        String categoryNotificationKey =
+            category.id; // Assuming category.id is unique and stable
+        String currentStatus =
+            _categoryNotificationStatusForMonth[categoryNotificationKey] ?? "";
+
         if (percentageSpent >= 100) {
-          // print("ALERT: Budget EXCEEDED for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%)");
-          NotificationService().showSimpleNotification(
-            id: alertNotificationId,
-            title: 'Budget Exceeded: ${category.name}',
-            body:
-                'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
-            channelId: 'budget_alerts_exceeded',
-            channelName: 'Budget Exceeded Alerts',
-            channelDescription:
-                'Notifications for when a category budget is exceeded.',
-            importance: Importance.high, // Ensure it's prominent
-          );
+          if (currentStatus != 'alert') {
+            // Only send if not already alerted this month
+            print(
+              "ALERT: Budget EXCEEDED for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%) - Sending Notification",
+            );
+            NotificationService().showSimpleNotification(
+              id: alertNotificationId,
+              title: 'Budget Exceeded: ${category.name}',
+              body:
+                  'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
+              channelId: 'budget_alerts_exceeded',
+              channelName: 'Budget Exceeded Alerts',
+              channelDescription:
+                  'Notifications for when a category budget is exceeded.',
+              importance: Importance.high, // Ensure it's prominent
+            );
+            _categoryNotificationStatusForMonth[categoryNotificationKey] =
+                'alert';
+          }
         } else if (percentageSpent >= 80) {
-          // print("WARNING: Budget APPROACHING for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%)");
-          NotificationService().showSimpleNotification(
-            id: warningNotificationId,
-            title: 'Budget Warning: ${category.name}',
-            body:
-                'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%) of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
-            channelId: 'budget_warnings',
-            channelName: 'Budget Warnings',
-            channelDescription:
-                'Notifications for when a category budget is approaching its limit.',
-            importance:
-                Importance
-                    .defaultImportance, // Slightly less prominent than exceeded
-          );
+          if (currentStatus == "") {
+            // Only send warning if no notification (warning or alert) sent yet this month
+            print(
+              "WARNING: Budget APPROACHING for category '${category.name}'. Spent: $_selectedCurrency${spent.toStringAsFixed(2)}, Budget: $_selectedCurrency${budget.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%) - Sending Notification",
+            );
+            NotificationService().showSimpleNotification(
+              id: warningNotificationId,
+              title: 'Budget Warning: ${category.name}',
+              body:
+                  'You\'ve spent $_selectedCurrency${spent.toStringAsFixed(2)} (${percentageSpent.toStringAsFixed(1)}%) of your $_selectedCurrency${budget.toStringAsFixed(2)} budget for ${category.name}.',
+              channelId: 'budget_warnings',
+              channelName: 'Budget Warnings',
+              channelDescription:
+                  'Notifications for when a category budget is approaching its limit.',
+              importance:
+                  Importance
+                      .defaultImportance, // Slightly less prominent than exceeded
+            );
+            _categoryNotificationStatusForMonth[categoryNotificationKey] =
+                'warning';
+          }
         }
       }
     }
@@ -1224,6 +1258,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     ),
                     const SizedBox(height: 12),
                     Row(
+                      // Row for Pie Chart title and date picker
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
@@ -1250,12 +1285,15 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                                     ? '${DateFormat.yMd().format(_graphStartDate!)} - ${DateFormat.yMd().format(_graphEndDate!)}'
                                     : 'Select Range',
                                 overflow:
-                                    TextOverflow.ellipsis, // Handle long text
+                                    TextOverflow
+                                        .ellipsis, // Handle long text by truncating
                                 style: TextStyle(
                                   fontSize:
                                       14, // Slightly larger for visibility
                                   fontWeight: FontWeight.bold, // Make it bold
-                                  color: Colors.black87,
+                                  color:
+                                      Colors
+                                          .black87, // Use a dark color for contrast
                                 ),
                               ),
                             ),
@@ -1272,6 +1310,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     ),
                     const SizedBox(height: 12),
                     BudgetGraph(
+                      // This is the Pie Chart
                       // Pass the filtered expenses and date range to the graph
                       expenses:
                           _expenses.where((expense) {
@@ -1293,6 +1332,65 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       currency: _selectedCurrency,
                     ),
                     const SizedBox(height: 20),
+                    // New Section for Spending Over Time Bar Graph
+                    Text(
+                      'Spending Over Time',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Period Selector for Bar Graph
+                    Center(
+                      child: SegmentedButton<String>(
+                        segments:
+                            _barGraphPeriods.map((period) {
+                              String label =
+                                  period[0].toUpperCase() +
+                                  period.substring(
+                                    1,
+                                  ); // Capitalize first letter
+                              if (period == 'daily') label = 'Day';
+                              if (period == 'weekly') label = 'Week';
+                              if (period == 'monthly') label = 'Month';
+                              if (period == 'yearly') label = 'Year';
+                              return ButtonSegment<String>(
+                                value: period,
+                                label: Text(label),
+                              );
+                            }).toList(),
+                        selected: {_barGraphPeriod},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          if (newSelection.isNotEmpty) {
+                            setState(() {
+                              _barGraphPeriod = newSelection.first;
+                            });
+                          }
+                        },
+                        style: SegmentedButton.styleFrom(
+                          selectedBackgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          selectedForegroundColor:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onSurface,
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // New Bar Graph Widget
+                    SpendingOverTimeGraph(
+                      expenses: _expenses, // Pass all filtered expenses
+                      period: _barGraphPeriod,
+                      currency: _selectedCurrency,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Monthly and Yearly Summaries remain below the graphs
                     MonthlySummary(
                       expenses: _expenses,
                       currency: _selectedCurrency,
