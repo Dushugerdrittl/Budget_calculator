@@ -23,6 +23,7 @@ import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'firebase_options.dart'; // Import the generated Firebase options
 import 'login_screen.dart'; // Import the LoginScreen - THIS LINE IS ALREADY PRESENT, NO CHANGE NEEDED
 import 'package:animations/animations.dart'; // Import the animations package
+import 'widgets/welcome_animation_screen.dart'; // Import the new welcome screen
 import 'services/notification_service.dart'; // Import NotificationService
 
 const String _themeModePrefsKey =
@@ -76,6 +77,8 @@ class AppRoot extends StatefulWidget {
 
 class _AppRootState extends State<AppRoot> {
   late ThemeMode _currentThemeMode;
+  bool _showWelcomeAnimation = false;
+  User? _currentUserForWelcome;
 
   @override
   void initState() {
@@ -142,17 +145,43 @@ class _AppRootState extends State<AppRoot> {
             ); // Content for the MaterialApp's home
           }
           if (snapshot.hasData) {
-            // User is logged in, show the main app content
-            return MyApp(
-              // Pass the current user to MyApp
-              currentUser: snapshot.data!, // snapshot.data is the User object
-              currentThemeMode: _currentThemeMode, // Pass current theme
-              onThemeChanged: _handleThemeChanged, // Pass theme change handler
-              savedDefaultCurrency: widget.savedDefaultCurrency,
-            );
+            _currentUserForWelcome = snapshot.data!;
+            if (_showWelcomeAnimation && _currentUserForWelcome != null) {
+              return WelcomeAnimationScreen(
+                userName:
+                    _currentUserForWelcome!.displayName ??
+                    _currentUserForWelcome!.email ??
+                    "Friend",
+                onAnimationComplete: () {
+                  if (mounted) {
+                    setState(() {
+                      _showWelcomeAnimation = false;
+                    });
+                  }
+                },
+              );
+            } else {
+              // User is logged in, show the main app content
+              return MyApp(
+                currentUser: _currentUserForWelcome!,
+                currentThemeMode: _currentThemeMode,
+                onThemeChanged: _handleThemeChanged,
+                savedDefaultCurrency: widget.savedDefaultCurrency,
+              );
+            }
           }
           // User is not logged in, show the LoginScreen
-          return const LoginScreen(); // LoginScreen is already a Scaffold
+          _currentUserForWelcome = null; // Clear user
+          return LoginScreen(
+            onSuccessfulLogin: (User user) {
+              if (mounted) {
+                setState(() {
+                  _currentUserForWelcome = user;
+                  _showWelcomeAnimation = true;
+                });
+              }
+            },
+          );
         },
       ),
     );
@@ -347,13 +376,13 @@ class _MyAppState extends State<MyApp> {
           actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(
                   context,
                 ).textTheme.bodyLarge?.color?.withOpacity(0.7),
               ),
               onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(

@@ -6,8 +6,13 @@ import '../models/category.dart';
 
 class ManageCategoriesPage extends StatefulWidget {
   final String userId;
+  final String defaultCurrencySymbol;
 
-  const ManageCategoriesPage({super.key, required this.userId});
+  const ManageCategoriesPage({
+    super.key,
+    required this.userId,
+    required this.defaultCurrencySymbol,
+  });
 
   @override
   State<ManageCategoriesPage> createState() => _ManageCategoriesPageState();
@@ -145,7 +150,8 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.0),
                     ),
-                    prefixIcon: const Icon(Icons.monetization_on_outlined),
+                    prefixText: widget.defaultCurrencySymbol,
+                    // prefixIcon: const Icon(Icons.monetization_on_outlined), // prefixText is usually better for currency
                   ),
                 ),
               ],
@@ -155,7 +161,6 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
           actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(
                   context,
@@ -164,9 +169,9 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
               onPressed: () {
                 Navigator.of(dialogContext).pop(); // Pop with no result
               },
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
-              child: Text(isEditing ? 'Save' : 'Add'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -202,6 +207,7 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                   );
                 }
               },
+              child: Text(isEditing ? 'Save' : 'Add'),
             ),
           ],
         );
@@ -216,7 +222,7 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
         final existing = _categoryBox.values.any(
           (cat) =>
               cat.name.toLowerCase() == categoryName.toLowerCase() &&
-              (!isEditing || cat.id != existingCategory?.id),
+              (!isEditing || cat.id != existingCategory.id),
         );
 
         if (existing) {
@@ -226,7 +232,7 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
           return;
         }
 
-        if (isEditing && existingCategory != null) {
+        if (isEditing) {
           final updatedCategory = Category(
             id: existingCategory.id,
             name: categoryName,
@@ -329,13 +335,13 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
           actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(
                   context,
                 ).textTheme.bodyLarge?.color?.withOpacity(0.7),
               ),
               onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -414,7 +420,8 @@ class _ManageCategoriesPageState extends State<ManageCategoriesPage> {
                           subtitle:
                               category.budget != null
                                   ? Text(
-                                    'Budget: \$${category.budget!.toStringAsFixed(2)}', // Assuming USD for now
+                                    // Use the passed currency symbol
+                                    'Budget: ${widget.defaultCurrencySymbol}${category.budget!.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color:

@@ -61,14 +61,15 @@ class SubscriptionEntry extends HiveObject {
     this.enableReminder = false, // Default to false for new entries
   }) {
     // Ensure nextDueDate has a default if not provided
-    this.nextDueDate = this.nextDueDate ?? date;
+    nextDueDate = nextDueDate ?? date;
   }
 
   // Helper to advance the next due date by one month
   // Call this after a payment is made or a reminder is acknowledged
   void advanceNextDueDate() {
-    if (nextDueDate == null)
+    if (nextDueDate == null) {
       return; // Or handle appropriately, e.g., set to DateTime.now() then advance
+    }
     nextDueDate = DateTime(
       nextDueDate!.year,
       nextDueDate!.month + 1,

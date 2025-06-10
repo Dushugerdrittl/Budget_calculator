@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class RegistrationScreen extends StatefulWidget {
-  const RegistrationScreen({super.key});
+  final Function(User) onSuccessfulRegistration;
+
+  const RegistrationScreen({super.key, required this.onSuccessfulRegistration});
 
   @override
   State<RegistrationScreen> createState() => _RegistrationScreenState();
@@ -25,24 +27,29 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       }
 
       try {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Registering...')));
-
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registering...'),
+            duration: Duration(seconds: 1),
+          ),
         );
+
+        UserCredential userCredential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
 
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Registration Successful! Please login.'),
-            ),
-          );
-          // Navigate back to login screen after successful registration
-          Navigator.of(context).pop();
+          // Registration successful, call the callback
+          if (userCredential.user != null) {
+            widget.onSuccessfulRegistration(userCredential.user!);
+          }
+          // AppRoot will handle showing the welcome animation, then MyApp.
+          // No need to pop here if onSuccessfulRegistration triggers the main app view.
+          // If you want to ensure the registration screen is removed from stack after animation:
+          // Navigator.of(context).popUntil((route) => route.isFirst); // Or specific logic
         }
       } on FirebaseAuthException catch (e) {
         if (mounted) {

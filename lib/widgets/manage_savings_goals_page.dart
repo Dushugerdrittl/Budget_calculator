@@ -207,16 +207,15 @@ class _ManageSavingsGoalsPageState extends State<ManageSavingsGoalsPage> {
               actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
               actions: <Widget>[
                 TextButton(
-                  child: const Text('Cancel'),
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(
                       context,
                     ).textTheme.bodyLarge?.color?.withOpacity(0.7),
                   ),
                   onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  child: Text(isEditing ? 'Save' : 'Add'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -228,7 +227,7 @@ class _ManageSavingsGoalsPageState extends State<ManageSavingsGoalsPage> {
                         _targetAmountController.text.trim(),
                       );
 
-                      if (isEditing && existingGoal != null) {
+                      if (isEditing) {
                         // Update existing goal
                         final updatedGoal = SavingGoal(
                           id: existingGoal.id,
@@ -307,6 +306,7 @@ class _ManageSavingsGoalsPageState extends State<ManageSavingsGoalsPage> {
                       _selectedTargetDate = null;
                     }
                   },
+                  child: Text(isEditing ? 'Save' : 'Add'),
                 ),
               ],
             );
@@ -618,7 +618,7 @@ class _ManageSavingsGoalsPageState extends State<ManageSavingsGoalsPage> {
                                 backgroundColor:
                                     Theme.of(
                                       context,
-                                    ).colorScheme.surfaceVariant,
+                                    ).colorScheme.surfaceContainerHighest,
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                   Theme.of(context).colorScheme.primary,
                                 ),

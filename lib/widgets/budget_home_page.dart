@@ -48,7 +48,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
 
   // State for tracking monthly budget notifications
   String _currentMonthForNotificationTracking = "";
-  Map<String, String> _categoryNotificationStatusForMonth =
+  final Map<String, String> _categoryNotificationStatusForMonth =
       {}; // Key: category.id, Value: 'warning' or 'alert'
 
   final Map<String, String> _sortOptions = {
@@ -574,16 +574,15 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
           actionsPadding: const EdgeInsets.fromLTRB(24.0, 0, 24.0, 16.0),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
               style: TextButton.styleFrom(
                 foregroundColor: Theme.of(
                   context,
                 ).textTheme.bodyLarge?.color?.withOpacity(0.7),
               ),
               onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
             ),
             ElevatedButton(
-              child: const Text('Save'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -597,6 +596,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                   Navigator.of(context).pop();
                 }
               },
+              child: const Text('Save'),
             ),
           ],
         );
@@ -827,7 +827,6 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
               actionsPadding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 16.0),
               actions: <Widget>[
                 TextButton(
-                  child: const Text('Clear Filters'),
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.error,
                   ),
@@ -842,18 +841,18 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     });
                     Navigator.of(dialogContext).pop();
                   },
+                  child: const Text('Clear Filters'),
                 ),
                 TextButton(
-                  child: const Text('Cancel'),
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(
                       context,
                     ).textTheme.bodyLarge?.color?.withOpacity(0.7),
                   ),
                   onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  child: const Text('Apply'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -869,6 +868,7 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                     });
                     Navigator.of(dialogContext).pop();
                   },
+                  child: const Text('Apply'),
                 ),
               ],
             );

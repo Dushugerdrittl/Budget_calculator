@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'manage_categories_page.dart'; // Import the new page
 import 'manage_savings_goals_page.dart'; // Import Savings Goals page
 import '../services/notification_service.dart'; // Import NotificationService
-import 'package:shared_preferences/shared_preferences.dart'; // Though not directly used in this diff, it's good practice if settings persist
+// Though not directly used in this diff, it's good practice if settings persist
 
 class SettingsPage extends StatefulWidget {
   final ThemeMode themeMode;
@@ -301,8 +301,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           context,
                           MaterialPageRoute(
                             builder:
-                                (context) =>
-                                    ManageCategoriesPage(userId: user.uid),
+                                (context) => ManageCategoriesPage(
+                                  userId: user.uid,
+                                  defaultCurrencySymbol:
+                                      _selectedCurrencySymbol, // Pass the symbol
+                                ),
                           ),
                         );
                       }

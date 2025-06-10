@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'registration_screen.dart'; // Import the RegistrationScreen
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final Function(User) onSuccessfulLogin;
+
+  const LoginScreen({super.key, required this.onSuccessfulLogin});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -19,21 +21,27 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         // Show loading indicator
         ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Logging in...')));
-
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          context, // Use captured context
+        ).showSnackBar(
+          const SnackBar(
+            content: Text('Logging in...'),
+            duration: Duration(seconds: 1),
+          ),
         );
-        // Navigate to home screen on successful login
-        // You'll need to implement this navigation logic
+
+        UserCredential userCredential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
+
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Login Successful!')));
-          // Example: Navigator.of(context).pushReplacementNamed('/home');
+          // Call the callback instead of showing another SnackBar here,
+          // as AppRoot will handle the transition.
+          if (userCredential.user != null) {
+            widget.onSuccessfulLogin(userCredential.user!);
+          }
         }
       } on FirebaseAuthException catch (e) {
         if (mounted) {
@@ -143,7 +151,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) => const RegistrationScreen(),
+                          builder:
+                              (context) => RegistrationScreen(
+                                onSuccessfulRegistration:
+                                    widget
+                                        .onSuccessfulLogin, // Pass the same callback
+                              ),
                         ),
                       );
                     },
