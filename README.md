@@ -99,6 +99,11 @@ A charming and functional budget and expense tracking application with a Hello K
 *   Enhanced UI/UX with more custom Hello Kitty assets.
 *   Recurring transaction automation.
 
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Copyright (c) 2024 Master Nithin sai koushik kancharla.
+
 ---
 
 *This app is a delightful way to manage your finances with a touch of cuteness!* 💖
