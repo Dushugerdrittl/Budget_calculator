@@ -46,6 +46,9 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   DateTime? _filterEndDate;
   String _currentSortOrder = 'date_desc'; // Default sort order
 
+  DateTime? _graphStartDate; // Date range for the graph
+  DateTime? _graphEndDate; // Date range for the graph
+
   // State for tracking monthly budget notifications
   String _currentMonthForNotificationTracking = "";
   final Map<String, String> _categoryNotificationStatusForMonth =
@@ -86,6 +89,10 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
   void initState() {
     super.initState();
     _selectedCurrency = widget.initialCurrencySymbol;
+    // Initialize graph date range to the current month
+    final now = DateTime.now();
+    _graphStartDate = DateTime(now.year, now.month, 1);
+    _graphEndDate = DateTime(now.year, now.month, now.day); // Up to today
     _initializeAndLoadAllData();
   }
 
@@ -608,6 +615,36 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
     setState(() {
       _selectedCurrency = currency;
     });
+  }
+
+  Future<void> _selectGraphDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(
+        start: _graphStartDate ?? DateTime.now(),
+        end: _graphEndDate ?? DateTime.now(),
+      ),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      helpText: 'Select date range for graph',
+      cancelText: 'CANCEL',
+      confirmText: 'APPLY',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme, // Use app's theme
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _graphStartDate = picked.start;
+        _graphEndDate = picked.end;
+      });
+    }
   }
 
   Future<void> _showFilterDialog() async {
@@ -1186,8 +1223,72 @@ class _BudgetHomePageState extends State<BudgetHomePage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Spending by Category',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        Flexible(
+                          // Wrap the TextButton.icon in Flexible
+                          child: TextButton.icon(
+                            onPressed: _selectGraphDateRange,
+                            icon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 20,
+                            ), // Adjusted icon size
+                            label: Flexible(
+                              // Allow the label to be flexible
+                              child: Text(
+                                _graphStartDate != null && _graphEndDate != null
+                                    ? '${DateFormat.yMd().format(_graphStartDate!)} - ${DateFormat.yMd().format(_graphEndDate!)}'
+                                    : 'Select Range',
+                                overflow:
+                                    TextOverflow.ellipsis, // Handle long text
+                                style: TextStyle(
+                                  fontSize:
+                                      14, // Slightly larger for visibility
+                                  fontWeight: FontWeight.bold, // Make it bold
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.secondary,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                              ), // Adjust padding if needed
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     BudgetGraph(
-                      totalSpending: totalBudget,
+                      // Pass the filtered expenses and date range to the graph
+                      expenses:
+                          _expenses.where((expense) {
+                            return (_graphStartDate == null ||
+                                    !expense.date.isBefore(_graphStartDate!)) &&
+                                (_graphEndDate == null ||
+                                    !expense.date.isAfter(
+                                      DateTime(
+                                        _graphEndDate!.year,
+                                        _graphEndDate!.month,
+                                        _graphEndDate!.day,
+                                        23,
+                                        59,
+                                        59,
+                                      ),
+                                    ));
+                          }).toList(),
                       budgetLimit: _monthlyBudgetLimit,
                       currency: _selectedCurrency,
                     ),

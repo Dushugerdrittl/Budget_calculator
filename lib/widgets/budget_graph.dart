@@ -1,115 +1,122 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import '../models/entries.dart' as models; // Import expense model
 
 class BudgetGraph extends StatelessWidget {
-  final double totalSpending;
+  final List<models.ExpenseEntry> expenses; // Receive filtered expenses
   final double? budgetLimit;
   final String currency;
 
   const BudgetGraph({
     super.key,
-    required this.totalSpending,
-    required this.budgetLimit,
+    required this.expenses,
+    this.budgetLimit,
     required this.currency,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool isOverBudget =
-        budgetLimit != null && totalSpending > budgetLimit!;
-    final double maxValue =
-        (budgetLimit != null) ? (budgetLimit! * 1.2) : (totalSpending * 1.2);
+    // Calculate spending per category from the provided expenses
+    Map<String, double> spendingPerCategory = {};
+    for (var expense in expenses) {
+      spendingPerCategory[expense.category ?? 'Uncategorized'] =
+          (spendingPerCategory[expense.category ?? 'Uncategorized'] ?? 0) +
+          expense.amount;
+    }
 
-    double spendingBarWidth = (totalSpending / maxValue).clamp(0.0, 1.0);
-    double budgetBarWidth =
-        budgetLimit != null ? (budgetLimit! / maxValue).clamp(0.0, 1.0) : 0;
+    // Prepare data for a Pie Chart (Spending by Category)
+    final List<PieChartSectionData> sections = [];
+    int colorIndex = 0;
+    final List<Color> colors = [
+      Colors.pinkAccent,
+      Colors.purpleAccent,
+      Colors.blueAccent,
+      Colors.greenAccent,
+      Colors.orangeAccent,
+      Colors.tealAccent,
+      Colors.redAccent,
+      Colors.indigoAccent,
+      Colors.cyanAccent,
+      Colors.limeAccent,
+    ]; // Define a set of colors
 
-    final double maxBarWidth =
-        MediaQuery.of(context).size.width - 64; // padding adjustment
-
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            const Text(
-              'Budget vs Spending',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.pink,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Stack(
-              children: [
-                Container(
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: Colors.pink.shade100,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
-                Container(
-                  height: 30,
-                  width: maxBarWidth * budgetBarWidth,
-                  decoration: BoxDecoration(
-                    color: Colors.pink.shade300,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
-                Container(
-                  height: 30,
-                  width: maxBarWidth * spendingBarWidth,
-                  decoration: BoxDecoration(
-                    color: isOverBudget ? Colors.redAccent : Colors.pinkAccent,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
+    spendingPerCategory.forEach((category, amount) {
+      if (amount > 0) {
+        sections.add(
+          PieChartSectionData(
+            value: amount,
+            color: colors[colorIndex % colors.length], // Cycle through colors
+            title: '${category}\n${currency}${amount.toStringAsFixed(2)}',
+            radius: 80, // Adjust size as needed
+            titleStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              shadows: [
+                Shadow(
+                  blurRadius: 2.0,
+                  color: Colors.black54,
+                  offset: Offset(1.0, 1.0),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Spending: $currency${totalSpending.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.pinkAccent,
-                  ),
-                ),
-                Flexible(
-                  // Allow this widget to shrink and prevent overflow
-                  child: Text(
-                    budgetLimit == null
-                        ? 'No Budget Limit Set'
-                        : 'Budget Limit: $currency${budgetLimit!.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isOverBudget ? Colors.redAccent : Colors.pink,
-                    ),
-                    textAlign: TextAlign.end, // Align text to the right
-                    overflow:
-                        TextOverflow.ellipsis, // Handle potential overflow
-                  ),
-                ),
-              ],
-            ),
-            if (isOverBudget)
-              const Padding(
-                padding: EdgeInsets.only(top: 8.0),
-                child: Text(
-                  'You have exceeded your budget limit!',
-                  style: TextStyle(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+            titlePositionPercentageOffset: 0.55, // Adjust text position
+          ),
+        );
+        colorIndex++;
+      }
+    });
+
+    // Add a section for remaining budget if a limit is set and not exceeded
+    double totalSpent = expenses.fold(0, (sum, item) => sum + item.amount);
+    if (budgetLimit != null && budgetLimit! > totalSpent) {
+      double remaining = budgetLimit! - totalSpent;
+      sections.add(
+        PieChartSectionData(
+          value: remaining,
+          color: Colors.grey.shade300, // Color for remaining budget
+          title: 'Remaining\n${currency}${remaining.toStringAsFixed(2)}',
+          radius: 80,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+            shadows: [
+              Shadow(
+                blurRadius: 2.0,
+                color: Colors.white54,
+                offset: Offset(1.0, 1.0),
               ),
-          ],
+            ],
+          ),
+          titlePositionPercentageOffset: 0.55,
+        ),
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: 1.3, // Adjust aspect ratio as needed
+      child: Card(
+        elevation: 4,
+        margin: const EdgeInsets.symmetric(vertical: 8.0),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15.0),
+        ),
+        color: Colors.white.withOpacity(0.9),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: PieChart(
+            // Changed to PieChart
+            PieChartData(
+              sections: sections,
+              borderData: FlBorderData(show: false),
+              sectionsSpace: 2, // Space between sections
+              centerSpaceRadius: 40, // Inner circle radius
+              // Optional: Add touch interactions
+              // pieTouchData: PieTouchData(touchCallback: (FlTouchEvent event, pieTouchResponse) { ... }),
+            ),
+          ),
         ),
       ),
     );
